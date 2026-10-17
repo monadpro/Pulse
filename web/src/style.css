@@ -47,3 +47,8 @@ select { background: #151926; color: inherit; border: 1px solid #2a3150; border-
 header { flex-wrap: wrap; gap: 12px; }
 .wallet { flex-wrap: wrap; }
 .wallet button, .wallet span { white-space: nowrap; }
+.market { display: flex; gap: 24px; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; }
+.bigprice { font-size: 34px; font-weight: 700; }
+.bigprice small { font-size: 14px; font-weight: 400; color: #8b93a7; }
+.bigprice span { font-size: 16px; }
+.spark { max-width: 100%; }

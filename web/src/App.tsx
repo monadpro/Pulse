@@ -4,6 +4,7 @@ import { chain } from "./chain";
 import { addrs, deployed, publicHttp, publicWs, readMany } from "./chainClients";
 import { erc20Abi, exchangeAbi, GAS } from "./abi";
 import { AttackPanel } from "./AttackPanel";
+import { MarketPanel } from "./MarketPanel";
 
 type CommitState = "Proposed" | "Voted" | "Finalized" | "Verified";
 const RANK: Record<CommitState, number> = { Proposed: 0, Voted: 1, Finalized: 2, Verified: 3 };
@@ -233,10 +234,13 @@ export function App() {
     if (!injected || !wallet) return setStatus("未检测到钱包，请安装 MetaMask");
     setAccount(undefined);
     const [a] = await wallet.requestAddresses();
-    try {
-      await wallet.switchChain({ id: chain.id });
-    } catch {
-      await wallet.addChain({ chain });
+    // Only ask the wallet to switch networks when it is on another one: every request is a popup.
+    if ((await wallet.getChainId()) !== chain.id) {
+      try {
+        await wallet.switchChain({ id: chain.id });
+      } catch {
+        await wallet.addChain({ chain });
+      }
     }
     setAccount(a);
   }
@@ -250,7 +254,8 @@ export function App() {
       setLastTx({ label, hash });
       setStatus(`${label}：已提交，等待确认…`);
       const sent = performance.now();
-      await publicHttp.waitForTransactionReceipt({ hash, pollingInterval: 100 });
+      const receipt = await publicHttp.waitForTransactionReceipt({ hash, pollingInterval: 100 });
+      if (receipt.status !== "success") throw new Error("交易已上链但被合约回退（失败），请在区块浏览器查看原因");
       setLatency(Math.round(performance.now() - sent));
       setStatus(`${label}：已确认（含签名 ${Math.round(performance.now() - t0)} ms）`);
       refresh();
@@ -329,6 +334,8 @@ export function App() {
           ))}
         </div>
       </section>
+
+      <MarketPanel />
 
       <div className="cols">
         <section>
