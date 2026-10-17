@@ -35,7 +35,7 @@ const CLAIM_PER_TX = Math.min(Number(process.env.CLAIM_PER_TX ?? 40), 100);
 const { exchange } = deployments as Record<string, Address>;
 
 const probe = createPublicClient({ transport: http(rpc) });
-const chain = defineChain({ id: await probe.getChainId(), name: "target", nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 }, rpcUrls: { default: { http: [rpc] } } });
+const chain = defineChain({ id: await probe.getChainId(), name: "target", nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 }, rpcUrls: { default: { http: [rpc] } }, contracts: { multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" } } });
 const pub = createPublicClient({ chain, transport: http(rpc), pollingInterval: 500 });
 const account = privateKeyToAccount((env.KEEPER_PRIVATE_KEY ?? env.DEPLOYER_PRIVATE_KEY) as Hex); // own key: no nonce clashes with stress/bot
 const wallet = createWalletClient({ account, chain, transport: http(rpc) });
@@ -91,7 +91,8 @@ for (;;) {
       if (len > nextId) {
         const ids: bigint[] = [];
         for (let i = nextId; i < len && ids.length < 300; i++) ids.push(i);
-        const rows = await Promise.all(ids.map((id) => pub.readContract({ address: exchange, abi: exchangeAbi, functionName: "orders", args: [id] })));
+        // one multicall request: the public RPC allows only ~15 requests/sec, so never one call per order
+        const rows = await pub.multicall({ contracts: ids.map((id) => ({ address: exchange, abi: exchangeAbi, functionName: "orders", args: [id] })), allowFailure: false });
         rows.forEach((o, i) => { if (!o[4]) pending.push({ id: ids[i], batch: o[1] }); });
         nextId += BigInt(ids.length);
       }
