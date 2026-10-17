@@ -53,3 +53,43 @@ header { flex-wrap: wrap; gap: 12px; }
 .bigprice span { font-size: 16px; }
 .spark { max-width: 100%; }
 .bulk { margin: 8px 0 12px; }
+
+/* --- block timeline, detail, lens --- */
+.timeline-wrap .legend { color: #8b93a7; font-size: 12px; margin: 0 0 10px; }
+.cell { cursor: pointer; border: 2px solid transparent; position: relative; }
+.cell.derived { border: 2px dashed rgba(0, 0, 0, 0.4); }
+.cell.sel { outline: 2px solid #fff; outline-offset: 1px; }
+.cell small { font-size: 10px; font-weight: 600; }
+.cell .mark { position: absolute; top: 1px; right: 3px; font-size: 10px; }
+.detail { border: 1px solid #2a3150; }
+.detail-head { display: flex; justify-content: space-between; align-items: center; }
+.small-link { font-size: 12px; margin-left: 10px; font-weight: 400; }
+.statusrows { background: #0f1320; border-radius: 10px; padding: 10px 14px; line-height: 1.8; font-size: 14px; }
+.tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 6px; }
+.tag.warn { background: #3a2b12; color: #f5c542; }
+.explain { background: #14233a; border-left: 3px solid #5aa9ff; padding: 10px 14px; border-radius: 6px; line-height: 1.7; }
+.kpis { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0; font-size: 14px; color: #aab1c4; }
+.lens { margin: 8px 0 14px; }
+.lens svg { display: block; margin-bottom: 8px; }
+.svg-title { fill: #8b93a7; font-size: 11px; }
+.svg-axis { fill: #8b93a7; font-size: 10px; }
+.svg-clear { fill: #f5c542; font-size: 11px; font-weight: 700; }
+table.clickable tbody tr { cursor: pointer; }
+table.clickable tbody tr:hover, tr.order-row:hover { background: #181e33; }
+tr.order-row { cursor: pointer; }
+.order-detail { background: #0f1320; border-radius: 10px; padding: 10px 14px; margin: 4px 0 8px; font-size: 14px; }
+.order-detail ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.8; }
+.steps { display: flex; gap: 14px; flex-wrap: wrap; color: #8b93a7; }
+.step.done { color: #46d39a; }
+.progress { list-style: none; padding: 0; margin: 10px 0 0; font-size: 13px; line-height: 1.8; }
+.progress .ok { color: #46d39a; } .progress .fail { color: #ff6b66; } .progress .run { color: #f5c542; }
+.progress .muted { color: #8b93a7; }
+@media (max-width: 760px) {
+  .cols, .vs { grid-template-columns: 1fr; }
+  .cell { width: 44px; height: 54px; }
+  .kpis { gap: 10px; }
+  table { font-size: 12px; }
+  .wallet { width: 100%; }
+}
+.lens svg { max-width: 760px; }
+a { cursor: pointer; }

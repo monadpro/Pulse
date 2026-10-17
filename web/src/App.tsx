@@ -1,31 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createWalletClient, custom, formatEther, parseEther, type Address, type Hex } from "viem";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createWalletClient, custom, parseEther, type Address, type Hex } from "viem";
 import { chain } from "./chain";
 import { addrs, deployed, publicHttp, publicWs, readMany } from "./chainClients";
 import { erc20Abi, exchangeAbi, GAS, manyGas } from "./abi";
 import { AttackPanel } from "./AttackPanel";
 import { MarketPanel } from "./MarketPanel";
+import { BlockDetail } from "./BlockDetail";
+import { OrderDetail } from "./OrderDetail";
+import { useBatches } from "./useBatches";
+import { derivedState, explorer, fmt, later, RANK, STATE_INFO, tickPrice, type CommitState, type MyOrder } from "./format";
 
-type CommitState = "Proposed" | "Voted" | "Finalized" | "Verified";
-const RANK: Record<CommitState, number> = { Proposed: 0, Voted: 1, Finalized: 2, Verified: 3 };
-const later = (a: CommitState, b: CommitState) => (RANK[b] > RANK[a] ? b : a);
 interface Cell {
   number: number;
-  state: CommitState;
-  orders: number;
-  clear?: { price: number; volume: number };
-}
-interface MyOrder {
-  id: number;
-  batch: number;
-  tick: number;
-  side: number;
-  claimed: boolean;
-  amount: bigint;
-  settled: boolean;
-  filled: bigint;
-  baseOut: bigint;
-  quoteOut: bigint;
+  real?: CommitState; // the state reported by the node (monadNewHeads); undefined = unknown, not "Proposed"
 }
 
 const eth = (window as unknown as { ethereum?: any }).ethereum;
@@ -33,9 +20,6 @@ interface Eip6963 {
   info: { uuid: string; name: string; rdns: string };
   provider: any;
 }
-const explorer = chain.blockExplorers?.default.url;
-const fmt = (v: bigint) => Number(formatEther(v)).toLocaleString(undefined, { maximumFractionDigits: 2 });
-const tickPrice = (t: number) => 0.5 + t * 0.01;
 const MAX_CELLS = 36;
 // A bounded allowance (not unlimited): safer for users and avoids wallet 'unlimited approval' warnings.
 const APPROVE_LIMIT = parseEther("100000");
@@ -50,6 +34,11 @@ export function App() {
   const [orders, setOrders] = useState<MyOrder[]>([]);
   const [status, setStatus] = useState("");
   const [latency, setLatency] = useState<number>();
+  const [selected, setSelected] = useState<number>();
+  const [openOrder, setOpenOrder] = useState<number>();
+  const [liveIds, setLiveIds] = useState<Record<number, number[]>>({}); // order ids seen live, per block (deduplicated)
+  const { rows: batchRows, stats, error: batchErr, loaded: batchLoaded, reload: reloadBatches } = useBatches();
+  const batchOf = useMemo(() => new Map(batchRows.map((r) => [r.batch, r])), [batchRows]);
   const head = cells.length ? cells[cells.length - 1].number : 0;
   const headRef = useRef(0);
   headRef.current = head;
@@ -77,35 +66,43 @@ export function App() {
   );
   const [lastTx, setLastTx] = useState<{ label: string; hash: Hex }>();
 
-  // --- live blocks: Proposed on arrival, then Voted (T+1) and Finalized (T+2); monadNewHeads overrides ---
+  // --- timeline: restore the last blocks from the chain head, then follow new ones ---
   useEffect(() => {
-    const onBlock = (b: { number: bigint | null }) => {
-      if (b.number == null) return;
-      const n = Number(b.number);
-      gotBlock = true;
+    let stop = false;
+    const addBlock = (n: number) =>
       setCells((prev) => {
         if (prev.some((c) => c.number === n)) return prev;
-        const next = [...prev, { number: n, state: "Proposed" as CommitState, orders: 0 }];
-        return next.slice(-MAX_CELLS).map((c) => ({
-          ...c,
-          state: later(c.state, n - c.number >= 2 ? "Finalized" : n - c.number === 1 ? "Voted" : "Proposed"),
-        }));
+        return [...prev, { number: n }].sort((a, b) => a.number - b.number).slice(-MAX_CELLS);
       });
-    };
+    // after a refresh the live feed starts empty: rebuild the recent block numbers from the head
+    publicHttp
+      .getBlockNumber()
+      .then((h) => {
+        if (stop) return;
+        const head = Number(h);
+        setCells((prev) => {
+          const have = new Set(prev.map((c) => c.number));
+          const fill = Array.from({ length: MAX_CELLS }, (_, i) => head - (MAX_CELLS - 1) + i).filter((n) => n >= 0 && !have.has(n)).map((n) => ({ number: n }));
+          return [...prev, ...fill].sort((a, b) => a.number - b.number).slice(-MAX_CELLS);
+        });
+      })
+      .catch(() => {});
+
     let gotBlock = false;
+    const onBlock = (b: { number: bigint | null }) => {
+      if (b.number == null) return;
+      gotBlock = true;
+      addBlock(Number(b.number));
+    };
     const unwatchWs = publicWs.watchBlocks({ onBlock, onError: () => {} });
     // Some networks block WebSockets: if no block arrives in 5s, fall back to polling over HTTP.
     let unwatchHttp: (() => void) | undefined;
     const fallback = setTimeout(() => {
       if (!gotBlock) unwatchHttp = publicHttp.watchBlocks({ onBlock, onError: () => {}, poll: true, pollingInterval: 400 });
     }, 5000);
-    const unwatch = () => {
-      unwatchWs();
-      clearTimeout(fallback);
-      unwatchHttp?.();
-    };
-    // Monad extension: block updates carry the real commitState.
-    let stop: (() => void) | undefined;
+
+    // Monad extension: block updates carry the real commitState (and move forward over time).
+    let unsub: (() => void) | undefined;
     try {
       const sub = (publicWs.transport as any).subscribe?.({
         params: ["monadNewHeads"],
@@ -113,55 +110,52 @@ export function App() {
           const h = d?.result ?? d;
           const n = Number(h?.number ?? h?.header?.number);
           const s = h?.commitState as CommitState | undefined;
-          if (!n || !s) return;
-          if (!(s in RANK)) return;
-          setCells((prev) => prev.map((c) => (c.number === n ? { ...c, state: later(c.state, s) } : c)));
+          if (!n || !s || !(s in RANK)) return;
+          setCells((prev) => prev.map((c) => (c.number === n ? { ...c, real: later(c.real, s) } : c)));
         },
         onError: () => {},
       });
       Promise.resolve(sub)
-        .then((r: any) => (stop = r?.unsubscribe))
+        .then((r: any) => (unsub = r?.unsubscribe))
         .catch(() => {});
     } catch {
-      /* fall back to derived states */
+      /* no real states available: cells stay "estimated" */
     }
     return () => {
-      unwatch();
-      stop?.();
+      stop = true;
+      unwatchWs();
+      clearTimeout(fallback);
+      unwatchHttp?.();
+      unsub?.();
     };
   }, []);
 
-  // --- live contract events: order counts per block and clearing results ---
+  // --- live contract events: show new orders immediately (deduplicated by order id), refresh batches on clearing ---
   useEffect(() => {
     if (!deployed) return;
     const u1 = publicWs.watchContractEvent({
       address: addrs.exchange,
       abi: exchangeAbi,
       eventName: "OrderSubmitted",
-      onLogs: (logs) =>
-        setCells((prev) =>
-          prev.map((c) => ({ ...c, orders: c.orders + logs.filter((l) => Number(l.args.batch) === c.number).length })),
-        ),
+      onLogs: (logs) => {
+        setLiveIds((prev) => {
+          const next = { ...prev };
+          for (const l of logs) {
+            const b = Number(l.args.batch);
+            const id = Number(l.args.orderId);
+            if (!(next[b] ?? []).includes(id)) next[b] = [...(next[b] ?? []), id];
+          }
+          return next;
+        });
+        reloadBatches();
+      },
     });
-    const u2 = publicWs.watchContractEvent({
-      address: addrs.exchange,
-      abi: exchangeAbi,
-      eventName: "BatchSettled",
-      onLogs: (logs) =>
-        setCells((prev) =>
-          prev.map((c) => {
-            const l = logs.find((x) => Number(x.args.batch) === c.number);
-            return l
-              ? { ...c, clear: { price: Number(formatEther(l.args.clearPrice!)), volume: Number(formatEther(l.args.volume!)) } }
-              : c;
-          }),
-        ),
-    });
+    const u2 = publicWs.watchContractEvent({ address: addrs.exchange, abi: exchangeAbi, eventName: "BatchSettled", onLogs: () => reloadBatches() });
     return () => {
       u1();
       u2();
     };
-  }, []);
+  }, [reloadBatches]);
 
   const [readErr, setReadErr] = useState("");
   const [chainHead, setChainHead] = useState(0);
@@ -253,11 +247,12 @@ export function App() {
   }
 
   // Gas limits are fixed: Monad charges gas_limit, and a failed estimate can make wallets over-reserve.
-  async function send(label: string, run: () => Promise<Hex>): Promise<boolean> {
+  async function send(label: string, run: () => Promise<Hex>): Promise<{ ok: boolean; hash?: Hex; error?: string }> {
     setStatus(`${label}：等待签名…`);
+    let hash: Hex | undefined;
     try {
       const t0 = performance.now();
-      const hash = await run();
+      hash = await run();
       setLastTx({ label, hash });
       setStatus(`${label}：已提交，等待确认…`);
       const sent = performance.now();
@@ -266,10 +261,11 @@ export function App() {
       setLatency(Math.round(performance.now() - sent));
       setStatus(`${label}：已确认（含签名 ${Math.round(performance.now() - t0)} ms）`);
       refresh();
-      return true;
+      return { ok: true, hash };
     } catch (e: any) {
-      setStatus(`${label}失败：${e?.shortMessage ?? e?.message ?? e}`);
-      return false;
+      const error = e?.shortMessage ?? e?.message ?? String(e);
+      setStatus(`${label}失败：${error}`);
+      return { ok: false, hash, error };
     }
   }
 
@@ -332,20 +328,36 @@ export function App() {
 
       {!deployed && <div className="warn">合约尚未部署：运行 forge script script/Deploy.s.sol，地址会写入 web/src/deployments.json</div>}
 
-      <section>
-        <h2>脉冲时间轴 <small>每格一个区块 · 黄 Proposed · 蓝 Voted · 绿 Finalized · 深绿 Verified</small></h2>
+      <section className="timeline-wrap">
+        <h2>脉冲时间轴 <small>每格一个区块 · 点击查看区块详情</small></h2>
+        <p className="legend">
+          颜色＝区块确认进度：黄 Proposed · 蓝 Voted · 绿 Finalized · 深绿 Verified。实线边框＝节点返回的真实状态；<b>虚线边框＝按区块距离推算</b>（页面打开前的区块无法获知真实状态）。✓＝该批次已清算。区块确认和批次清算是两件事。
+        </p>
+        {batchErr && <p className="warn-inline">{batchErr}。订单数、清算价暂时缺失，并不表示没有订单。</p>}
         <div className="timeline">
-          {cells.map((c) => (
-            <div key={c.number} className={`cell ${c.state}`} title={`block ${c.number}`}>
-              <b>{String(c.number).slice(-4)}</b>
-              <span>{c.orders ? `${c.orders} 单` : ""}</span>
-              <span>{c.clear ? `@${c.clear.price.toFixed(2)}` : ""}</span>
-            </div>
-          ))}
+          {cells.map((c) => {
+            const r = batchOf.get(c.number);
+            const live = liveIds[c.number]?.length ?? 0;
+            const orders = Math.max(r?.orders ?? 0, live);
+            const state = c.real ?? derivedState(c.number, head);
+            const tip = `区块 ${c.number}\n${STATE_INFO[state].label}${c.real ? "（真实）" : "（推算）"}${orders ? `\n${orders} 笔订单` : ""}${r?.settled ? (r.volume > 0 ? `\n已清算 @${r.price.toFixed(2)}` : "\n已清算，无成交") : orders ? "\n待清算" : ""}`;
+            return (
+              <div key={c.number} className={`cell ${state} ${c.real ? "real" : "derived"} ${selected === c.number ? "sel" : ""}`} title={tip} onClick={() => setSelected(c.number)}>
+                <b>{String(c.number).slice(-4)}</b>
+                <small>{orders ? `${orders} 单` : ""}</small>
+                <small>{r?.settled ? (r.volume > 0 ? `@${r.price.toFixed(2)}` : "无成交") : ""}</small>
+                {r?.settled && <span className="mark">✓</span>}
+              </div>
+            );
+          })}
         </div>
       </section>
 
-      <MarketPanel />
+      {selected !== undefined && (
+        <BlockDetail block={selected} head={Math.max(head, chainHead)} real={cells.find((c) => c.number === selected)?.real} row={batchOf.get(selected)} onClose={() => setSelected(undefined)} />
+      )}
+
+      <MarketPanel rows={batchRows} stats={stats} error={batchErr} loaded={batchLoaded} onSelect={setSelected} />
 
       <div className="cols">
         <section>
@@ -406,7 +418,7 @@ export function App() {
           {account && explorer && (
             <p className="status"><a href={`${explorer}/address/${account}`} target="_blank" rel="noreferrer">在区块浏览器查看我的全部交易</a></p>
           )}
-          {latency !== undefined && <p className="latency">提交到确认：<b>{latency} ms</b></p>}
+          {latency !== undefined && <p className="latency">链上确认耗时：<b>{latency} ms</b> <span className="muted">（从拿到交易哈希起算，不含钱包签名时间）</span></p>}
         </section>
 
         <section>
@@ -435,26 +447,36 @@ export function App() {
             <tbody>
               {orders.map((o) => {
                 const closed = Math.max(head, chainHead) > o.batch; // chainHead comes from HTTP, so it works even when WebSockets are blocked
+                const noFill = o.settled && o.filled === 0n;
                 return (
-                  <tr key={o.id}>
-                    <td>{o.id}</td>
-                    <td>{o.batch}</td>
-                    <td className={o.side === 0 ? "buy" : "sell"}>{o.side === 0 ? "买" : "卖"}</td>
-                    <td>{tickPrice(o.tick).toFixed(2)}</td>
-                    <td>{fmt(o.amount)}</td>
-                    <td>{o.settled ? fmt(o.filled) : "–"}</td>
-                    <td>
-                      {o.claimed ? (
-                        "已领取"
-                      ) : !closed ? (
-                        "进行中"
-                      ) : !o.settled ? (
-                        <button onClick={() => send("清算", () => write(addrs.exchange, exchangeAbi, "settle", [BigInt(o.batch)], GAS.settle))}>清算</button>
-                      ) : (
-                        <button onClick={() => send("领取", () => write(addrs.exchange, exchangeAbi, "claim", [BigInt(o.id)], GAS.claim))}>领取</button>
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={o.id}>
+                    <tr className="order-row" onClick={() => setOpenOrder(openOrder === o.id ? undefined : o.id)} title="点击展开订单详情">
+                      <td>{o.id}</td>
+                      <td><a onClick={(e) => { e.stopPropagation(); setSelected(o.batch); }}>{o.batch}</a></td>
+                      <td className={o.side === 0 ? "buy" : "sell"}>{o.side === 0 ? "买" : "卖"}</td>
+                      <td>{tickPrice(o.tick).toFixed(2)}</td>
+                      <td>{fmt(o.amount)}</td>
+                      <td>{o.settled ? (noFill ? <span title="本批次买卖价格未匹配或你的限价不满足，押金可全额领回">未成交</span> : fmt(o.filled)) : "–"}</td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        {o.claimed ? (
+                          noFill ? "已退款" : "已领取"
+                        ) : !closed ? (
+                          "进行中"
+                        ) : !o.settled ? (
+                          <button onClick={() => send("清算", () => write(addrs.exchange, exchangeAbi, "settle", [BigInt(o.batch)], GAS.settle))}>清算</button>
+                        ) : (
+                          <button onClick={() => send("领取", () => write(addrs.exchange, exchangeAbi, "claim", [BigInt(o.id)], GAS.claim))}>{noFill ? "领取退款" : "领取"}</button>
+                        )}
+                      </td>
+                    </tr>
+                    {openOrder === o.id && (
+                      <tr key={`${o.id}-d`}>
+                        <td colSpan={7}>
+                          <OrderDetail o={o} row={batchOf.get(o.batch)} head={Math.max(head, chainHead)} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })}
             </tbody>
