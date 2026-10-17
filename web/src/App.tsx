@@ -197,6 +197,38 @@ export function App() {
     return () => clearInterval(t);
   }, [refresh]);
 
+  // Follow account changes made inside the wallet (MetaMask account menu) without a reload.
+  useEffect(() => {
+    if (!injected?.on) return;
+    const onAccounts = (accs: string[]) => {
+      setAccount(accs[0] as Address | undefined);
+      if (!accs[0]) setOrders([]);
+    };
+    injected.on("accountsChanged", onAccounts);
+    return () => injected.removeListener?.("accountsChanged", onAccounts);
+  }, [injected]);
+
+  /** Opens the wallet's own account picker so the user can tick another account (or import one there first). */
+  async function switchAccount() {
+    if (!injected || !wallet) return;
+    try {
+      await injected.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] });
+      const [a] = await wallet.requestAddresses();
+      setAccount(a);
+      setStatus("");
+    } catch (e: any) {
+      setStatus(`切换账户失败：${e?.shortMessage ?? e?.message ?? e}`);
+    }
+  }
+
+  function disconnect() {
+    setAccount(undefined);
+    setOrders([]);
+    setBal({ base: 0n, quote: 0n, allowBase: 0n, allowQuote: 0n });
+    setLastTx(undefined);
+    setStatus("");
+  }
+
   async function connect() {
     if (!injected || !wallet) return setStatus("未检测到钱包，请安装 MetaMask");
     setAccount(undefined);
@@ -255,9 +287,18 @@ export function App() {
         <div className="wallet">
           {account ? (
             <>
-              <span>{account.slice(0, 6)}…{account.slice(-4)}</span>
+              {providers.length > 1 && (
+                <select value={active?.info.uuid} onChange={(e) => setPicked(e.target.value)}>
+                  {providers.map((p) => (
+                    <option key={p.info.uuid} value={p.info.uuid}>{p.info.name}</option>
+                  ))}
+                </select>
+              )}
+              <span title={account}>{account.slice(0, 6)}…{account.slice(-4)}</span>
               <span>pMON {fmt(bal.base)}</span>
               <span>pUSD {fmt(bal.quote)}</span>
+              <button onClick={switchAccount}>切换账户</button>
+              <button onClick={disconnect}>断开</button>
             </>
           ) : (
             <>

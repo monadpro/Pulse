@@ -44,3 +44,6 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #1d2336; }
 a { color: #8fa8ff; }
 select { background: #151926; color: inherit; border: 1px solid #2a3150; border-radius: 8px; padding: 6px; }
 .cell.Verified { background: #2f9e78; }
+header { flex-wrap: wrap; gap: 12px; }
+.wallet { flex-wrap: wrap; }
+.wallet button, .wallet span { white-space: nowrap; }
