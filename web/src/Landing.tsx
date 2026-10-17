@@ -2,9 +2,46 @@ import { useEffect, useState } from "react";
 import { addrs, publicHttp } from "./chainClients";
 import { explorer } from "./format";
 import { useBatches } from "./useBatches";
+import { ThemeToggle } from "./ThemeToggle";
 import "./landing.css";
 
 const REPO = "https://github.com/monadpro/Pulse";
+interface Member { name: string; wechat: string; github: string }
+const TEAM: Member[] = [
+  { name: "宗勋", wechat: "weke69", github: "https://github.com/Ghostwritten" },
+  { name: "张镇源", wechat: "weiyil14", github: "https://github.com/cvcingcvc-code" },
+  { name: "宋大洋", wechat: "matrix2082", github: "https://github.com/dayangsong472-lgtm" },
+];
+
+function MemberCard({ m }: { m: Member }) {
+  const [imgOk, setImgOk] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard?.writeText(m.wechat).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  };
+  return (
+    <div className="ln-member">
+      <div className="ln-avatar">
+        {imgOk ? <img src={`${m.github}.png?size=200`} alt={`${m.name} 的 GitHub 头像`} loading="lazy" onError={() => setImgOk(false)} /> : m.name.slice(0, 1)}
+      </div>
+      <h3>{m.name}</h3>
+      <div className="ln-contact">
+        <button type="button" className="ln-chip" onClick={copy} title="点击复制微信号">
+          <span>微信 <code>{m.wechat}</code></span>
+          <small>{copied ? "已复制 ✓" : "复制"}</small>
+        </button>
+        <a className="ln-chip" href={m.github} target="_blank" rel="noreferrer">
+          <span>GitHub <code>{m.github.replace("https://github.com/", "@")}</code></span>
+          <small>打开 ↗</small>
+        </a>
+      </div>
+    </div>
+  );
+}
+
 const go = (hash: string) => {
   location.hash = hash;
   window.scrollTo(0, 0);
@@ -18,9 +55,9 @@ function HeroVisual({ block }: { block?: number }) {
   return (
     <div className="ln-visual">
       <svg viewBox="0 0 520 300" role="img" aria-label="同一个区块里的买单和卖单按同一个价格成交的示意动画">
-        <rect x="1" y="1" width="518" height="298" rx="16" fill="none" stroke="rgba(255,255,255,0.08)" />
-        <text x="20" y="28" fill="#8b93a7" fontSize="13">区块 {block ?? "···"} · 一轮拍卖</text>
-        <line x1="20" x2="500" y1="150" y2="150" stroke="#2a3150" />
+        <rect className="v-frame" x="1" y="1" width="518" height="298" rx="16" />
+        <text className="v-text" x="20" y="28" fontSize="13">区块 {block ?? "···"} · 一轮拍卖</text>
+        <line className="v-axis" x1="20" x2="500" y1="150" y2="150" />
         {bids.map((h, i) => (
           <rect key={`b${i}`} className="bid" x={70 + i * 36} y={150 - h} width="26" height={h} rx="5" fill="#46d39a" style={{ animationDelay: `${i * 0.12}s` }} />
         ))}
@@ -77,8 +114,14 @@ export function Landing() {
             <a onClick={() => scrollTo("monad")}>Monad</a>
             <a onClick={() => scrollTo("scope")}>边界</a>
             <a onClick={() => scrollTo("verify")}>可验证</a>
+            <a onClick={() => scrollTo("about")}>关于我们</a>
           </div>
-          <button className="ln-btn ln-primary small" onClick={() => go("#/app")}>进入应用 →</button>
+          <div className="ln-tools">
+            <a className="ln-icon" href={REPO} target="_blank" rel="noreferrer" aria-label="开源项目：GitHub 仓库" title="开源项目 · GitHub">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5A11.5 11.5 0 0 0 .5 12c0 5.08 3.29 9.38 7.86 10.9.58.1.79-.25.79-.56v-2c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5z" /></svg>
+            </a>
+            <ThemeToggle />
+          </div>
         </div>
       </nav>
 
@@ -195,6 +238,16 @@ export function Landing() {
               <a className="lnk" href={`${REPO}/blob/main/docs/ATTACK_COMPARISON.md`} target="_blank" rel="noreferrer">攻击对比说明</a> ·{" "}
               <a className="lnk" href={`${REPO}/blob/main/docs/USER_GUIDE.md`} target="_blank" rel="noreferrer">使用手册</a>
             </p>
+          </div>
+        </section>
+
+        <section className="ln-sec" id="about">
+          <h2>关于我们</h2>
+          <p className="sub">我们是一支三人团队，Pulse 的代码在黑客松当天从零完成并开源。欢迎交流想法、反馈问题，也欢迎一起把它做得更好。</p>
+          <div className="ln-team">
+            {TEAM.map((m) => (
+              <MemberCard key={m.github} m={m} />
+            ))}
           </div>
         </section>
 

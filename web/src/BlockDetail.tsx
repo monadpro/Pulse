@@ -114,6 +114,7 @@ export function BlockDetail({ block, head, real, row, onClose }: { block: number
   const settled = book?.settled ?? row?.settled ?? false;
   const state: CommitState = real ?? derivedState(block, head);
   const clearInfo = settled && book && book.volume > 0;
+  const empty = !!book && !book.bids.some((v) => v > 0) && !book.asks.some((v) => v > 0); // a block with no orders needs no clearing
   const buys = logs?.filter((l) => l.side === 0).length ?? 0;
   const sells = (logs?.length ?? 0) - buys;
 
@@ -140,7 +141,7 @@ export function BlockDetail({ block, head, real, row, onClose }: { block: number
         </div>
         <div>
           <b>批次清算状态：</b>
-          {settled ? "已清算" : block >= head ? "进行中" : "待清算"}。<span className="muted">区块被确认，不等于这一批订单已经清算，这是两件事。</span>
+          {empty ? "无订单，不需要清算" : settled ? "已清算" : block >= head ? "进行中" : "待清算"}。<span className="muted">区块被确认，不等于这一批订单已经清算，这是两件事。</span>
         </div>
       </div>
 
@@ -149,6 +150,7 @@ export function BlockDetail({ block, head, real, row, onClose }: { block: number
       {book && (
         <>
           <p className="explain">{explain(book, block, head)}</p>
+          {!empty && (
           <div className="kpis">
             <span>买单 <b className="buy">{logs ? buys : "…"}</b> 笔</span>
             <span>卖单 <b className="sell">{logs ? sells : "…"}</b> 笔</span>
@@ -158,6 +160,7 @@ export function BlockDetail({ block, head, real, row, onClose }: { block: number
             <span>卖盘总量 <b className="sell">{fmtN(book.asks.reduce((a, b) => a + b, 0))}</b></span>
             {settled && <span>未成交 <b>{fmtN(Math.max(book.bids.reduce((a, b) => a + b, 0), book.asks.reduce((a, b) => a + b, 0)) - book.volume)}</b> pMON（较大一侧）</span>}
           </div>
+          )}
           {(book.bids.some((v) => v > 0) || book.asks.some((v) => v > 0)) && (
             <BatchLens bids={book.bids} asks={book.asks} clearTick={book.clearTick} showClear={!!clearInfo} />
           )}
