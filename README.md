@@ -10,6 +10,11 @@ inside the block earns nothing — no front-running, no sandwiching.
 - `claim(orderId)` pays out fills at the uniform price (pro-rata on the long side) and refunds unused escrow.
 - Rounding always favors the contract, so it can never owe more than it holds (fuzz-tested).
 
+## Docs
+- [User guide](docs/USER_GUIDE.md) — step-by-step for beginners (Chinese)
+- [Team testing guide](docs/TESTING.md) — test checklist, known issues, how to report
+- [Plan](PLAN.md) — goals, design, task status
+
 ## Dev
 ```sh
 forge test -vv
