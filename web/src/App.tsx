@@ -23,9 +23,16 @@ interface MyOrder {
 }
 
 const eth = (window as unknown as { ethereum?: any }).ethereum;
+interface Eip6963 {
+  info: { uuid: string; name: string; rdns: string };
+  provider: any;
+}
+const explorer = chain.blockExplorers?.default.url;
 const fmt = (v: bigint) => Number(formatEther(v)).toLocaleString(undefined, { maximumFractionDigits: 2 });
 const tickPrice = (t: number) => 0.5 + t * 0.01;
 const MAX_CELLS = 36;
+// A bounded allowance (not unlimited): safer for users and avoids wallet 'unlimited approval' warnings.
+const APPROVE_LIMIT = parseEther("100000");
 
 export function App() {
   const [account, setAccount] = useState<Address>();
@@ -41,10 +48,28 @@ export function App() {
   const headRef = useRef(0);
   headRef.current = head;
 
+  // EIP-6963: discover every installed wallet instead of trusting whichever one grabbed window.ethereum.
+  const [providers, setProviders] = useState<Eip6963[]>([]);
+  const [picked, setPicked] = useState<string>();
+  useEffect(() => {
+    const onAnnounce = (e: Event) => {
+      const d = (e as CustomEvent<Eip6963>).detail;
+      setProviders((prev) => (prev.some((p) => p.info.uuid === d.info.uuid) ? prev : [...prev, d]));
+    };
+    window.addEventListener("eip6963:announceProvider", onAnnounce);
+    window.dispatchEvent(new Event("eip6963:requestProvider"));
+    return () => window.removeEventListener("eip6963:announceProvider", onAnnounce);
+  }, []);
+  const active =
+    providers.find((p) => p.info.uuid === picked) ??
+    providers.find((p) => p.info.rdns === "io.metamask") ??
+    providers[0];
+  const injected = active?.provider ?? eth;
   const wallet = useMemo(
-    () => (eth ? createWalletClient({ chain, transport: custom(eth) }) : undefined),
-    [],
+    () => (injected ? createWalletClient({ chain, transport: custom(injected) }) : undefined),
+    [injected],
   );
+  const [lastTx, setLastTx] = useState<{ label: string; hash: Hex }>();
 
   // --- live blocks: Proposed on arrival, then Voted (T+1) and Finalized (T+2); monadNewHeads overrides ---
   useEffect(() => {
@@ -167,7 +192,8 @@ export function App() {
   }, [refresh]);
 
   async function connect() {
-    if (!eth || !wallet) return setStatus("未检测到钱包，请安装 MetaMask");
+    if (!injected || !wallet) return setStatus("未检测到钱包，请安装 MetaMask");
+    setAccount(undefined);
     const [a] = await wallet.requestAddresses();
     try {
       await wallet.switchChain({ id: chain.id });
@@ -183,6 +209,7 @@ export function App() {
     try {
       const t0 = performance.now();
       const hash = await run();
+      setLastTx({ label, hash });
       setStatus(`${label}：已提交，等待确认…`);
       const sent = performance.now();
       await publicHttp.waitForTransactionReceipt({ hash, pollingInterval: 100 });
@@ -207,6 +234,9 @@ export function App() {
     }
   })();
   const needQuote = (amountWei * BigInt(Math.round(tickPrice(tick) * 100))) / 100n;
+  const have = side === 0 ? bal.quote : bal.base;
+  const need = side === 0 ? needQuote : amountWei;
+  const lacking = have < need;
   const needApprove = side === 0 ? bal.allowQuote < needQuote : bal.allowBase < amountWei;
 
   return (
@@ -224,7 +254,16 @@ export function App() {
               <span>pUSD {fmt(bal.quote)}</span>
             </>
           ) : (
-            <button onClick={connect}>连接钱包</button>
+            <>
+              {providers.length > 1 && (
+                <select value={active?.info.uuid} onChange={(e) => setPicked(e.target.value)}>
+                  {providers.map((p) => (
+                    <option key={p.info.uuid} value={p.info.uuid}>{p.info.name}</option>
+                  ))}
+                </select>
+              )}
+              <button onClick={connect}>连接钱包{active ? `（${active.info.name}）` : ""}</button>
+            </>
           )}
         </div>
       </header>
@@ -263,13 +302,18 @@ export function App() {
             <button disabled={!account || !deployed} onClick={() => send("领取 pMON", () => write(addrs.base, erc20Abi, "faucet", [], GAS.faucet))}>领 pMON</button>
             <button disabled={!account || !deployed} onClick={() => send("领取 pUSD", () => write(addrs.quote, erc20Abi, "faucet", [], GAS.faucet))}>领 pUSD</button>
           </div>
+          {account && deployed && amountWei > 0n && lacking ? (
+            <p className="warn-inline">
+              余额不足：需要 {fmt(need)} {side === 0 ? "pUSD" : "pMON"}，你有 {fmt(have)}。请先点上面的“领 {side === 0 ? "pUSD" : "pMON"}”。
+            </p>
+          ) : null}
           {needApprove ? (
             <button
               className="primary"
-              disabled={!account || !deployed}
+              disabled={!account || !deployed || lacking}
               onClick={() =>
                 send("授权", () =>
-                  write(side === 0 ? addrs.quote : addrs.base, erc20Abi, "approve", [addrs.exchange, 2n ** 256n - 1n], GAS.approve),
+                  write(side === 0 ? addrs.quote : addrs.base, erc20Abi, "approve", [addrs.exchange, APPROVE_LIMIT], GAS.approve),
                 )
               }
             >
@@ -278,13 +322,26 @@ export function App() {
           ) : (
             <button
               className="primary"
-              disabled={!account || !deployed || amountWei === 0n}
+              disabled={!account || !deployed || amountWei === 0n || lacking}
               onClick={() => send("下单", () => write(addrs.exchange, exchangeAbi, "submitOrder", [side, tick, amountWei], GAS.submitOrder))}
             >
               提交订单
             </button>
           )}
           <p className="status">{status}</p>
+          {lastTx && (
+            <p className="status">
+              最近交易：{lastTx.label}{" "}
+              {explorer ? (
+                <a href={`${explorer}/tx/${lastTx.hash}`} target="_blank" rel="noreferrer">{lastTx.hash.slice(0, 10)}…{lastTx.hash.slice(-6)}</a>
+              ) : (
+                lastTx.hash
+              )}
+            </p>
+          )}
+          {account && explorer && (
+            <p className="status"><a href={`${explorer}/address/${account}`} target="_blank" rel="noreferrer">在区块浏览器查看我的全部交易</a></p>
+          )}
           {latency !== undefined && <p className="latency">提交到确认：<b>{latency} ms</b></p>}
         </section>
 

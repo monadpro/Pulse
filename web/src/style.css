@@ -40,3 +40,6 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #1d2336; }
 .card h3 { margin: 0 0 10px; }
 .card ul { padding-left: 18px; margin: 12px 0 0; line-height: 1.8; }
 .muted { color: #8b93a7; font-size: 13px; }
+.warn-inline { background: #3a2b12; color: #f5c542; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+a { color: #8fa8ff; }
+select { background: #151926; color: inherit; border: 1px solid #2a3150; border-radius: 8px; padding: 6px; }
