@@ -12,6 +12,7 @@ inside the block earns nothing — no front-running, no sandwiching.
 
 ## Docs
 - [User guide](docs/USER_GUIDE.md) — step-by-step for beginners (Chinese)
+- [Plain-language guide: AMM vs Pulse](docs/PULSE_VS_AMM.md) — for complete beginners (Chinese)
 - [Attack comparison: AMM vs Pulse](docs/ATTACK_COMPARISON.md) — what the demo panel shows and how to read it
 - [Team testing guide](docs/TESTING.md) — test checklist, known issues, how to report
 - [Plan](PLAN.md) — goals, design, task status
