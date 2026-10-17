@@ -8,7 +8,7 @@ import "./landing.css";
 const REPO = "https://github.com/monadpro/Pulse";
 interface Member { name: string; wechat: string; github: string }
 const TEAM: Member[] = [
-  { name: "宗勋", wechat: "weke69", github: "https://github.com/Ghostwritten" },
+  { name: "宗勋", wechat: "weike59", github: "https://github.com/Ghostwritten" },
   { name: "张镇源", wechat: "weiyil14", github: "https://github.com/cvcingcvc-code" },
   { name: "宋大洋", wechat: "matrix2082", github: "https://github.com/dayangsong472-lgtm" },
 ];
