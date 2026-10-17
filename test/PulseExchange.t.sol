@@ -140,7 +140,9 @@ contract PulseExchangeTest is Test {
     }
 
     function testFuzz_solvent(uint8 t1, uint8 t2, uint8 t3, uint96 a1, uint96 a2, uint96 a3) public {
-        t1 %= 64; t2 %= 64; t3 %= 64;
+        t1 %= 64;
+        t2 %= 64;
+        t3 %= 64;
         uint128 x1 = uint128(bound(a1, 1, 1000 ether));
         uint128 x2 = uint128(bound(a2, 1, 1000 ether));
         uint128 x3 = uint128(bound(a3, 1, 1000 ether));

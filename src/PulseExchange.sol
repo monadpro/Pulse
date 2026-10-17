@@ -49,7 +49,9 @@ contract PulseExchange {
     mapping(uint64 => Batch) private batches;
     Order[] public orders;
 
-    event OrderSubmitted(uint256 indexed orderId, uint64 indexed batch, address indexed owner, Side side, uint8 tick, uint128 amount);
+    event OrderSubmitted(
+        uint256 indexed orderId, uint64 indexed batch, address indexed owner, Side side, uint8 tick, uint128 amount
+    );
     event BatchSettled(uint64 indexed batch, uint8 clearTick, uint256 clearPrice, uint128 volume);
     event Claimed(uint256 indexed orderId, address indexed owner, uint128 filled, uint256 baseOut, uint256 quoteOut);
 
