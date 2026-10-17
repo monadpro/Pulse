@@ -30,6 +30,47 @@ function Progress({ steps, batch }: { steps: Step[]; batch?: number }) {
   );
 }
 
+
+const PULSE_BASELINE = 1; // the liquidity in the Pulse experiment is offered at 1.00 pUSD per pMON
+
+function Bar({ label, value, max, text, tone }: { label: string; value: number; max: number; text: string; tone: "bad" | "good" }) {
+  const w = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
+  return (
+    <div className="bar-row">
+      <div className="bar-label">{label}</div>
+      <div className="bar-track"><div className={`bar-fill ${tone}`} style={{ width: `${w}%` }} /></div>
+      <div className="bar-text">{text}</div>
+    </div>
+  );
+}
+
+/** Side-by-side bars. Every number comes from the chain; nothing here is typed in. */
+function CompareBars({ amm, pulse }: { amm?: Amm; pulse?: Pulse }) {
+  if (!amm && !pulse) return null;
+  const ammLoss = amm && amm.fair > 0n ? Number(((amm.fair - amm.got) * 10000n) / amm.fair) / 100 : undefined;
+  // Pulse loss: price the victim paid per pMON versus the 1.00 liquidity price (0 when the price is not worse)
+  const paidPrice = pulse && pulse.victimBase > 0n ? Number(pulse.paid) / Number(pulse.victimBase) : undefined;
+  const pulseLoss = paidPrice !== undefined ? Math.max(0, (paidPrice / PULSE_BASELINE - 1) * 100) : undefined;
+  const lossMax = Math.max(ammLoss ?? 0, pulseLoss ?? 0, 1);
+  const ammProfit = amm ? Number(formatEther(amm.profit)) : undefined;
+  const pulseProfit = pulse ? Number(formatEther(pulse.profit)) : undefined;
+  const profitMax = Math.max(Math.abs(ammProfit ?? 0), Math.abs(pulseProfit ?? 0), 1);
+  return (
+    <div className="compare">
+      <h3>并排对比</h3>
+      <div className="compare-title">受害者多付了多少（相对没有攻击时）</div>
+      <Bar label="普通 AMM" value={ammLoss ?? 0} max={lossMax} tone="bad" text={ammLoss === undefined ? "待运行" : `${ammLoss.toFixed(2)}%`} />
+      <Bar label="Pulse" value={pulseLoss ?? 0} max={lossMax} tone="good" text={pulseLoss === undefined ? "待运行" : `${pulseLoss.toFixed(2)}%`} />
+      <div className="compare-title">攻击者的净利润（pUSD）</div>
+      <Bar label="普通 AMM" value={Math.max(0, ammProfit ?? 0)} max={profitMax} tone="bad" text={ammProfit === undefined ? "待运行" : ammProfit.toFixed(2)} />
+      <Bar label="Pulse" value={Math.max(0, pulseProfit ?? 0)} max={profitMax} tone="good" text={pulseProfit === undefined ? "待运行" : Math.abs(pulseProfit) < 1e-6 ? "约 0" : pulseProfit.toFixed(2)} />
+      <p className="muted">
+        普通 AMM 的损失是实际买到的 pMON 比攻击前少多少；Pulse 的损失是受害者付出的单价比流动性挂单价 1.00 高多少。条形越长越糟。数据均读自链上，不是预设值。
+      </p>
+    </div>
+  );
+}
+
 /** Replays one sandwich (attacker buys, victim buys, attacker sells) against an AMM and against Pulse. */
 export function AttackPanel({ send, write, enabled }: {
   send: (label: string, run: () => Promise<Hex>) => Promise<SendResult>;
@@ -103,7 +144,7 @@ export function AttackPanel({ send, write, enabled }: {
   const loss = amm && amm.fair > 0n ? Number(((amm.fair - amm.got) * 10000n) / amm.fair) / 100 : 0;
 
   return (
-    <section>
+    <section id="attack">
       <h2>攻击对比 <small>链上受控模拟：同一种三明治攻击（先买入，受害者买入，再卖出）分别打在普通 AMM 和 Pulse 上</small></h2>
       <p className="muted">
         说明：这不是真实攻击记录。AttackLab 合约同时扮演攻击者、受害者和流动性提供者，订单属于该合约，不是你的个人订单，也不会动用你的币，你只付手续费。结果由合约计算并从链上读取。
@@ -150,6 +191,7 @@ export function AttackPanel({ send, write, enabled }: {
           ) : null}
         </div>
       </div>
+      <CompareBars amm={amm} pulse={pulse} />
     </section>
   );
 }

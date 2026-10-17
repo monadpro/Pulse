@@ -35,6 +35,11 @@ export function App() {
   const [status, setStatus] = useState("");
   const [latency, setLatency] = useState<number>();
   const [selected, setSelected] = useState<number>();
+  const [tab, setTab] = useState<"trade" | "blocks" | "attack">("trade");
+  const openBlock = (n: number) => {
+    setSelected(n);
+    setTab("blocks");
+  };
   const [openOrder, setOpenOrder] = useState<number>();
   const [liveIds, setLiveIds] = useState<Record<number, number[]>>({}); // order ids seen live, per block (deduplicated)
   const { rows: batchRows, stats, error: batchErr, loaded: batchLoaded, reload: reloadBatches } = useBatches();
@@ -293,7 +298,7 @@ export function App() {
       <header>
         <div>
           <h1>Pulse</h1>
-          <p>一个区块，一个价格 · one block, one price</p>
+          <p>一个区块，一个价格 · one block, one price · <a href="#/">← 首页</a></p>
         </div>
         <div className="wallet">
           {account ? (
@@ -342,7 +347,7 @@ export function App() {
             const state = c.real ?? derivedState(c.number, head);
             const tip = `区块 ${c.number}\n${STATE_INFO[state].label}${c.real ? "（真实）" : "（推算）"}${orders ? `\n${orders} 笔订单` : ""}${r?.settled ? (r.volume > 0 ? `\n已清算 @${r.price.toFixed(2)}` : "\n已清算，无成交") : orders ? "\n待清算" : ""}`;
             return (
-              <div key={c.number} className={`cell ${state} ${c.real ? "real" : "derived"} ${selected === c.number ? "sel" : ""}`} title={tip} onClick={() => setSelected(c.number)}>
+              <div key={c.number} className={`cell ${state} ${c.real ? "real" : "derived"} ${selected === c.number ? "sel" : ""}`} title={tip} onClick={() => openBlock(c.number)}>
                 <b>{String(c.number).slice(-4)}</b>
                 <small>{orders ? `${orders} 单` : ""}</small>
                 <small>{r?.settled ? (r.volume > 0 ? `@${r.price.toFixed(2)}` : "无成交") : ""}</small>
@@ -353,12 +358,22 @@ export function App() {
         </div>
       </section>
 
-      {selected !== undefined && (
-        <BlockDetail block={selected} head={Math.max(head, chainHead)} real={cells.find((c) => c.number === selected)?.real} row={batchOf.get(selected)} onClose={() => setSelected(undefined)} />
+      <div className="tabs">
+        <button className={tab === "trade" ? "on" : ""} onClick={() => setTab("trade")}>交易</button>
+        <button className={tab === "blocks" ? "on" : ""} onClick={() => setTab("blocks")}>区块与行情</button>
+        <button className={tab === "attack" ? "on" : ""} onClick={() => setTab("attack")}>攻击对比</button>
+      </div>
+
+      {tab === "blocks" && (
+        <>
+          {selected !== undefined && (
+            <BlockDetail block={selected} head={Math.max(head, chainHead)} real={cells.find((c) => c.number === selected)?.real} row={batchOf.get(selected)} onClose={() => setSelected(undefined)} />
+          )}
+          <MarketPanel rows={batchRows} stats={stats} error={batchErr} loaded={batchLoaded} onSelect={openBlock} />
+        </>
       )}
 
-      <MarketPanel rows={batchRows} stats={stats} error={batchErr} loaded={batchLoaded} onSelect={setSelected} />
-
+      {tab === "trade" && (
       <div className="cols">
         <section>
           <h2>下单（进入当前区块的批次）</h2>
@@ -452,7 +467,7 @@ export function App() {
                   <Fragment key={o.id}>
                     <tr className="order-row" onClick={() => setOpenOrder(openOrder === o.id ? undefined : o.id)} title="点击展开订单详情">
                       <td>{o.id}</td>
-                      <td><a onClick={(e) => { e.stopPropagation(); setSelected(o.batch); }}>{o.batch}</a></td>
+                      <td><a onClick={(e) => { e.stopPropagation(); openBlock(o.batch); }}>{o.batch}</a></td>
                       <td className={o.side === 0 ? "buy" : "sell"}>{o.side === 0 ? "买" : "卖"}</td>
                       <td>{tickPrice(o.tick).toFixed(2)}</td>
                       <td>{fmt(o.amount)}</td>
@@ -483,8 +498,9 @@ export function App() {
           </table>
         </section>
       </div>
+      )}
 
-      <AttackPanel send={send} write={write} enabled={!!account && deployed} />
+      {tab === "attack" && <AttackPanel send={send} write={write} enabled={!!account && deployed} />}
     </div>
   );
 }
