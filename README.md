@@ -6,7 +6,7 @@ inside the block earns nothing — no front-running, no sandwiching.
 
 ## How it works
 - `submitOrder(side, tick, amount)` escrows funds and aggregates the order into one of 64 fixed price ticks.
-- `settle(batch)` (anyone, after the block ends) scans the 64 ticks once and picks the price that maximizes matched volume. Gas is constant (~170k) regardless of order count.
+- `settle(batch)` (anyone, after the block ends) scans the 64 ticks once and picks the price that maximizes matched volume. Gas is constant (~155–175k) regardless of order count.
 - `claim(orderId)` pays out fills at the uniform price (pro-rata on the long side) and refunds unused escrow.
 - Rounding always favors the contract, so it can never owe more than it holds (fuzz-tested).
 
@@ -16,13 +16,20 @@ inside the block earns nothing — no front-running, no sandwiching.
 - [Plan](PLAN.md) — goals, design, task status
 
 ## Scale
-- `forge test --match-contract PulseScaleTest -vv`: **1,000 orders in one block**, `settle` costs **170,173 gas** (a fixed 64-tick scan, same as for 2 orders), and all 1,000 claims pay out without the contract ever being insolvent.
-- `submitOrders` batches many orders into one transaction (~47k gas per order instead of ~200k for a single `submitOrder`).
-- Stress demo against any RPC (`web/scripts/stress.ts`): sends the batches back to back with local nonces so they land in the same block, then clears each batch and prints orders per block and settle gas.
-  ```sh
-  cd web && ORDERS=400 PER_TX=100 npx tsx scripts/stress.ts   # RPC_URL=... to target another chain
-  ```
-  On a local anvil this put 400 orders into one block and cleared them for 161,531 gas.
+Measured, not promised:
+
+- **Monad testnet** (`web/scripts/stress.ts`, run on the verified deployment): **600 orders confirmed in 3.1 s**, with **450 orders in a single block**. Clearing that block needs **172,498 gas**, against **154,264 gas** for a block of 150 orders: the cost of `settle` does not grow with the number of orders (it is a fixed 64-slot scan). Monad receipts report the gas limit as `gasUsed`, so these numbers come from `eth_estimateGas`.
+- `forge test --match-contract PulseScaleTest -vv`: **1,000 orders in one block**, `settle` ~188k gas (the very first settle also initialises the batch list; steady state ~153k), and all 1,000 claims pay out without the contract ever being insolvent.
+- `forge test --match-contract PulseInvariantTest`: random sequences of orders, settles and claims keep the exchange solvent for both tokens, and every account's order list stays complete.
+- `submitOrders` batches many orders into one transaction (~52k gas per order instead of ~230k for a single cold `submitOrder`).
+- **Storage layout for Monad**: the bid and ask of a tick share one slot, and a batch's 64-slot book starts at a 128-slot-aligned base, so a cold settle reads one storage page. This cut a steady-state settle from ~170k to ~153k gas in Foundry's Monad mode.
+- Throughput is limited by the public RPC (~15 requests/sec) and by MON for gas, not by the contract.
+
+```sh
+cd web
+ORDERS=600 PER_TX=150 npx tsx scripts/stress.ts   # sends the batches back to back, then clears each block
+npx tsx scripts/keeper.ts                         # optional: auto-settle every finished batch
+```
 
 ## Dev
 ```sh

@@ -5,7 +5,7 @@
  *   ORDERS=1000 PER_TX=100 npx tsx scripts/stress.ts
  *   RPC_URL=http://127.0.0.1:8545 npx tsx scripts/stress.ts   # local anvil
  *
- * What it shows: orders-per-block grows with load, while `settle` stays a fixed ~170k gas
+ * What it shows: orders-per-block grows with load, while `settle` stays a fixed ~155-175k gas
  * (a constant 64-tick scan), so clearing a 1,000-order batch costs the same as clearing 2.
  * `submitOrders` batches many orders into one transaction (~52k gas per order instead of ~230k),
  * and the transactions are sent back to back with locally managed nonces so they land together.
@@ -25,7 +25,7 @@ const env = Object.fromEntries(
 );
 const rpc = process.env.RPC_URL ?? "https://testnet-rpc.monad.xyz";
 const ORDERS = Number(process.env.ORDERS ?? 300);
-const PER_TX = Math.min(Number(process.env.PER_TX ?? 100), 250); // 250 x ~47k gas stays far below the 30M per-tx cap
+const PER_TX = Math.min(Number(process.env.PER_TX ?? 100), 250); // 250 x ~52k gas stays far below the 30M per-tx cap
 const { base, quote, exchange } = deployments as Record<string, Address>;
 
 const probe = createPublicClient({ transport: http(rpc) });
@@ -86,8 +86,10 @@ while ([...perBlock.keys()].some((b) => b >= head)) {
 console.log("\nclearing:");
 for (const [b, n] of [...perBlock].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
   const t = Date.now();
+  // Monad receipts report the gas LIMIT as gasUsed (it charges the limit), so measure the real need by simulation first
+  const need = await pub.estimateContractGas({ address: exchange, abi: exchangeAbi, functionName: "settle", args: [b], account: account.address });
   const rc = await pub.waitForTransactionReceipt({ hash: await send(exchange, exchangeAbi, "settle", [b], GAS.settle) });
   const info = await pub.readContract({ address: exchange, abi: exchangeAbi, functionName: "getBatch", args: [b] });
-  console.log(`  block ${b}: ${n} orders -> settle gas ${rc.gasUsed}, clearing price ${(0.5 + info[1] * 0.01).toFixed(2)}, matched ${formatEther(info[2])} pMON, ${Date.now() - t} ms`);
+  console.log(`  block ${b}: ${n} orders -> settle needs ${need} gas (limit charged ${rc.gasUsed}), clearing price ${(0.5 + info[1] * 0.01).toFixed(2)}, matched ${formatEther(info[2])} pMON, ${Date.now() - t} ms`);
 }
 console.log(`\nbalance left: ${formatEther(await pub.getBalance({ address: account.address }))} MON`);
