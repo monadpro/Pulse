@@ -76,19 +76,31 @@ export function App() {
 
   // --- live blocks: Proposed on arrival, then Voted (T+1) and Finalized (T+2); monadNewHeads overrides ---
   useEffect(() => {
-    const unwatch = publicWs.watchBlocks({
-      onBlock: (b) => {
-        const n = Number(b.number);
-        setCells((prev) => {
-          if (prev.some((c) => c.number === n)) return prev;
-          const next = [...prev, { number: n, state: "Proposed" as CommitState, orders: 0 }];
-          return next.slice(-MAX_CELLS).map((c) => ({
-            ...c,
-            state: later(c.state, n - c.number >= 2 ? "Finalized" : n - c.number === 1 ? "Voted" : "Proposed"),
-          }));
-        });
-      },
-    });
+    const onBlock = (b: { number: bigint | null }) => {
+      if (b.number == null) return;
+      const n = Number(b.number);
+      gotBlock = true;
+      setCells((prev) => {
+        if (prev.some((c) => c.number === n)) return prev;
+        const next = [...prev, { number: n, state: "Proposed" as CommitState, orders: 0 }];
+        return next.slice(-MAX_CELLS).map((c) => ({
+          ...c,
+          state: later(c.state, n - c.number >= 2 ? "Finalized" : n - c.number === 1 ? "Voted" : "Proposed"),
+        }));
+      });
+    };
+    let gotBlock = false;
+    const unwatchWs = publicWs.watchBlocks({ onBlock, onError: () => {} });
+    // Some networks block WebSockets: if no block arrives in 5s, fall back to polling over HTTP.
+    let unwatchHttp: (() => void) | undefined;
+    const fallback = setTimeout(() => {
+      if (!gotBlock) unwatchHttp = publicHttp.watchBlocks({ onBlock, onError: () => {}, poll: true, pollingInterval: 400 });
+    }, 5000);
+    const unwatch = () => {
+      unwatchWs();
+      clearTimeout(fallback);
+      unwatchHttp?.();
+    };
     // Monad extension: block updates carry the real commitState.
     let stop: (() => void) | undefined;
     try {
@@ -149,6 +161,7 @@ export function App() {
   }, []);
 
   const [readErr, setReadErr] = useState("");
+  const [chainHead, setChainHead] = useState(0);
   // Public RPCs allow only ~15 requests/sec, so every poll is a handful of multicalls, never one call per order.
   const refresh = useCallback(async () => {
     if (!account || !deployed) return;
@@ -161,6 +174,7 @@ export function App() {
         { address: addrs.exchange, abi: exchangeAbi, functionName: "ordersLength" },
       ]);
       setBal({ base, quote, allowBase, allowQuote });
+      setChainHead(Number(await publicHttp.getBlockNumber()));
 
       const len = Number(lenRaw);
       const ids = Array.from({ length: Math.min(len, 100) }, (_, i) => len - 1 - i);
@@ -406,7 +420,7 @@ export function App() {
             <thead><tr><th>#</th><th>区块</th><th>方向</th><th>价格</th><th>数量</th><th /></tr></thead>
             <tbody>
               {orders.map((o) => {
-                const closed = head > o.batch;
+                const closed = Math.max(head, chainHead) > o.batch; // chainHead comes from HTTP, so it works even when WebSockets are blocked
                 return (
                   <tr key={o.id}>
                     <td>{o.id}</td>
