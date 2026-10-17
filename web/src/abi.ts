@@ -14,6 +14,7 @@ export const exchangeAbi = parseAbi([
   "function orders(uint256) view returns (address owner, uint64 batch, uint8 tick, uint8 side, bool claimed, uint128 amount)",
   "function getBatch(uint64) view returns (bool settled, uint8 clearTick, uint128 volume, uint128[64] bids, uint128[64] asks)",
   "function submitOrder(uint8 side, uint8 tick, uint128 amount) returns (uint256)",
+  "function submitOrders(uint8[] sides, uint8[] ticks, uint128[] amounts)",
   "function settle(uint64 batch)",
   "function claim(uint256 orderId)",
   "function previewClaim(uint256) view returns (uint128 filled, uint256 baseOut, uint256 quoteOut)",

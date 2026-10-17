@@ -204,3 +204,52 @@ contract AttackLabTest is Test {
         emit log_named_uint("Pulse victim paid", rep.victimQuotePaid);
     }
 }
+
+contract PulseScaleTest is Test {
+    MockToken base;
+    MockToken quote;
+    PulseExchange ex;
+    address[4] users = [address(0xA1), address(0xA2), address(0xA3), address(0xA4)];
+
+    function setUp() public {
+        base = new MockToken("Base", "BASE");
+        quote = new MockToken("Quote", "USD");
+        ex = new PulseExchange(IERC20(address(base)), IERC20(address(quote)));
+        for (uint256 i; i < users.length; ++i) {
+            base.mint(users[i], 10_000_000 ether);
+            quote.mint(users[i], 10_000_000 ether);
+            vm.startPrank(users[i]);
+            base.approve(address(ex), type(uint256).max);
+            quote.approve(address(ex), type(uint256).max);
+            vm.stopPrank();
+        }
+        vm.roll(1000);
+    }
+
+    /// 1,000 orders in ONE block: settle still costs the same fixed gas, and every claim pays out.
+    function test_thousandOrdersOneBlock_settleGasFixed_andSolvent() public {
+        uint256 n = 1000;
+        for (uint256 i; i < n; ++i) {
+            address u = users[i % 4];
+            vm.prank(u);
+            ex.submitOrder(
+                i % 2 == 0 ? PulseExchange.Side.Buy : PulseExchange.Side.Sell,
+                uint8(40 + (uint256(keccak256(abi.encode(i))) % 24)),
+                uint128(1 ether + (i % 7) * 1 ether)
+            );
+        }
+        vm.roll(block.number + 1);
+        uint256 g = gasleft();
+        ex.settle(1000);
+        uint256 settleGas = g - gasleft();
+        emit log_named_uint("orders in one block", n);
+        emit log_named_uint("settle gas", settleGas);
+        assertLt(settleGas, 200_000);
+
+        for (uint256 i; i < n; ++i) {
+            ex.claim(i); // reverts if the contract were insolvent at any point
+        }
+        assertLe(base.balanceOf(address(ex)), 10 ether); // only rounding dust remains
+        assertLe(quote.balanceOf(address(ex)), 10 ether);
+    }
+}

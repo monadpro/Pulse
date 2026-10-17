@@ -15,11 +15,23 @@ inside the block earns nothing — no front-running, no sandwiching.
 - [Team testing guide](docs/TESTING.md) — test checklist, known issues, how to report
 - [Plan](PLAN.md) — goals, design, task status
 
+## Scale
+- `forge test --match-contract PulseScaleTest -vv`: **1,000 orders in one block**, `settle` costs **170,173 gas** (a fixed 64-tick scan, same as for 2 orders), and all 1,000 claims pay out without the contract ever being insolvent.
+- `submitOrders` batches many orders into one transaction (~47k gas per order instead of ~200k for a single `submitOrder`).
+- Stress demo against any RPC (`web/scripts/stress.ts`): sends the batches back to back with local nonces so they land in the same block, then clears each batch and prints orders per block and settle gas.
+  ```sh
+  cd web && ORDERS=400 PER_TX=100 npx tsx scripts/stress.ts   # RPC_URL=... to target another chain
+  ```
+  On a local anvil this put 400 orders into one block and cleared them for 161,531 gas.
+
 ## Dev
 ```sh
 forge test -vv
 ```
 Config follows the Monad docs (`network = "monad"`, Foundry >= 1.8).
+
+## License
+MIT, see [LICENSE](LICENSE).
 
 ## Deployed on Monad testnet (chainId 10143)
 All contracts are verified on MonadVision (Sourcify, exact match). Live app: https://monadpro.github.io/Pulse/
