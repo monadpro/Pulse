@@ -31,7 +31,7 @@ const env = Object.fromEntries(
 const rpc = process.env.RPC_URL ?? "https://testnet-rpc.monad.xyz";
 const MAX_SPEND = parseEther(process.env.MAX_SPEND ?? "0.8");
 const AUTO_CLAIM = (process.env.AUTO_CLAIM ?? "1") !== "0";
-const CLAIM_PER_TX = Math.min(Number(process.env.CLAIM_PER_TX ?? 40), 100);
+const CLAIM_PER_TX = Math.min(Number(process.env.CLAIM_PER_TX ?? 15), 100); // Monad reserves gas_limit x maxFee up front, so small chunks keep a low balance usable
 const { exchange } = deployments as Record<string, Address>;
 
 const probe = createPublicClient({ transport: http(rpc) });
@@ -59,11 +59,12 @@ console.log(`balance ${mon(startBalance)} MON, spend cap ${mon(MAX_SPEND)} MON, 
 const send = async (functionName: "settleMany" | "claimMany", args: any[], gas: bigint) => {
   const hash = await wallet.writeContract({
     address: exchange, abi: exchangeAbi, functionName, args, gas, nonce: await nonceOf(),
-    maxFeePerGas: gasPrice * 2n, maxPriorityFeePerGas: 1n,
+    maxFeePerGas: (gasPrice * 13n) / 10n, maxPriorityFeePerGas: 1n,
   } as any);
   return pub.waitForTransactionReceipt({ hash });
 };
 
+let step = "start";
 for (;;) {
   try {
     if ((await spent()) >= MAX_SPEND) {
@@ -71,6 +72,7 @@ for (;;) {
       process.exit(0);
     }
 
+    step = "read";
     const [head, recent, len] = await Promise.all([
       pub.getBlockNumber(),
       pub.readContract({ address: exchange, abi: exchangeAbi, functionName: "recentBatches", args: [64n] }),
@@ -78,8 +80,9 @@ for (;;) {
     ]);
 
     // 1. settle every finished batch
-    const todo = recent.filter((b) => !b.settled && b.batch < head).map((b) => b.batch).slice(0, 20);
+    const todo = recent.filter((b) => !b.settled && b.batch < head).map((b) => b.batch).slice(0, 10);
     if (todo.length > 0) {
+      step = "settleMany";
       const rc = await send("settleMany", [todo], manyGas.settle(todo.length));
       settledCount += todo.length;
       console.log(`settled ${todo.length} batch(es) [${todo.join(", ")}] status ${rc.status}, spent ${mon(await spent())} MON`);
@@ -92,6 +95,7 @@ for (;;) {
         const ids: bigint[] = [];
         for (let i = nextId; i < len && ids.length < 300; i++) ids.push(i);
         // one multicall request: the public RPC allows only ~15 requests/sec, so never one call per order
+        step = "read-orders";
         const rows = await pub.multicall({ contracts: ids.map((id) => ({ address: exchange, abi: exchangeAbi, functionName: "orders", args: [id] })), allowFailure: false });
         rows.forEach((o, i) => { if (!o[4]) pending.push({ id: ids[i], batch: o[1] }); });
         nextId += BigInt(ids.length);
@@ -99,6 +103,7 @@ for (;;) {
       const settledSet = new Set(recent.filter((b) => b.settled).map((b) => b.batch));
       const ready = pending.filter((p) => settledSet.has(p.batch)).slice(0, CLAIM_PER_TX);
       if (ready.length > 0) {
+        step = "claimMany";
         const rc = await send("claimMany", [ready.map((p) => p.id)], manyGas.claim(ready.length));
         if (rc.status === "success") {
           claimedCount += ready.length;
@@ -109,7 +114,7 @@ for (;;) {
       }
     }
   } catch (e: any) {
-    console.error("keeper error:", e.shortMessage ?? e.message);
+    console.error("keeper error:", e.shortMessage ?? e.message, "|", String(e.details ?? e.cause?.message ?? "").slice(0, 200), "| step:", step);
   }
   await new Promise((r) => setTimeout(r, 1500));
 }

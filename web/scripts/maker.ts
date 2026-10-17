@@ -9,8 +9,8 @@
  *   SIDE=buy npx tsx scripts/maker.ts           # buy 20 pMON at 1.00 (fills SELL orders <= 1.00)
  *   SECONDS=60 TICK=50 AMOUNT=20 MAX_SPEND=6 npx tsx scripts/maker.ts
  *
- * Each order costs ~0.033 MON (Monad charges the gas limit) and the keeper also pays to clear each block,
- * so a 40 s burst is roughly 5 MON for the maker plus a similar amount for the keeper. MAX_SPEND caps the maker.
+ * Measured cost: each block of liquidity costs ~0.036 MON for the maker (Monad charges the gas limit) PLUS ~0.05 MON for
+ * the keeper to clear and claim it, so a 40 s burst (~130 blocks) is roughly 10 MON in total. MAX_SPEND caps only the maker.
  * Uses MAKER_PRIVATE_KEY from ../.env. Stop early with Ctrl+C.
  */
 import { readFileSync } from "node:fs";
