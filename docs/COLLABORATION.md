@@ -15,8 +15,8 @@
 
 ```sh
 # 第一次
-git clone https://github.com/monadpro/Pulse.git && cd Pulse
-git checkout dev
+git clone --recurse-submodules https://github.com/monadpro/Pulse.git && cd Pulse
+git checkout dev        # 合约测试需要子模块；漏了就补一句 git submodule update --init
 
 # 之后每次：先同步，再改，再同步，再推
 git pull --rebase origin dev
