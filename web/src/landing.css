@@ -69,3 +69,8 @@
 .landing section.ln-sec { background: none; border-radius: 0; margin: 0; padding: 28px 0 56px; }
 .landing header.ln-hero { display: grid; flex-wrap: nowrap; }
 .landing button.ln-btn { width: auto; margin: 0; }
+
+.ln-tagline { margin: -6px 0 14px; color: #8a7bff; font-weight: 600; font-size: 15px; }
+.ln-example { margin-top: 18px; padding: 16px 20px; border-radius: 14px; background: rgba(108, 92, 231, 0.1); border: 1px solid rgba(108, 92, 231, 0.3); line-height: 1.8; font-size: 14px; color: #d3d8ea; }
+.ln-example span { display: block; color: #b3a8ff; font-weight: 600; }
+.ln-list { margin: 8px 0 0; padding-left: 18px; line-height: 1.85; color: #c7cde0; font-size: 14px; }
