@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createWalletClient, custom, formatEther, parseEther, type Address, type Hex } from "viem";
 import { chain } from "./chain";
 import { addrs, deployed, publicHttp, publicWs, readMany } from "./chainClients";
-import { erc20Abi, exchangeAbi, GAS } from "./abi";
+import { erc20Abi, exchangeAbi, GAS, manyGas } from "./abi";
 import { AttackPanel } from "./AttackPanel";
 import { MarketPanel } from "./MarketPanel";
 
@@ -23,6 +23,9 @@ interface MyOrder {
   claimed: boolean;
   amount: bigint;
   settled: boolean;
+  filled: bigint;
+  baseOut: bigint;
+  quoteOut: bigint;
 }
 
 const eth = (window as unknown as { ethereum?: any }).ethereum;
@@ -166,38 +169,28 @@ export function App() {
   const refresh = useCallback(async () => {
     if (!account || !deployed) return;
     try {
-      const [base, quote, allowBase, allowQuote, lenRaw] = await readMany([
+      // one multicall: balances, allowances and the account's newest orders (with settlement results)
+      const [base, quote, allowBase, allowQuote, list] = await readMany([
         { address: addrs.base, abi: erc20Abi, functionName: "balanceOf", args: [account] },
         { address: addrs.quote, abi: erc20Abi, functionName: "balanceOf", args: [account] },
         { address: addrs.base, abi: erc20Abi, functionName: "allowance", args: [account, addrs.exchange] },
         { address: addrs.quote, abi: erc20Abi, functionName: "allowance", args: [account, addrs.exchange] },
-        { address: addrs.exchange, abi: exchangeAbi, functionName: "ordersLength" },
+        { address: addrs.exchange, abi: exchangeAbi, functionName: "ordersOf", args: [account, 40n] },
       ]);
       setBal({ base, quote, allowBase, allowQuote });
       setChainHead(Number(await publicHttp.getBlockNumber()));
-
-      const len = Number(lenRaw);
-      const ids = Array.from({ length: Math.min(len, 100) }, (_, i) => len - 1 - i);
-      const raw = await readMany(
-        ids.map((id) => ({ address: addrs.exchange, abi: exchangeAbi, functionName: "orders", args: [BigInt(id)] })),
-      );
-      const mine = ids
-        .map((id, i) => ({ id, o: raw[i] }))
-        .filter((x) => x.o[0].toLowerCase() === account.toLowerCase());
-      const batches = [...new Set(mine.map((x) => x.o[1] as bigint))];
-      const info = await readMany(
-        batches.map((b) => ({ address: addrs.exchange, abi: exchangeAbi, functionName: "getBatch", args: [b] })),
-      );
-      const settledMap = new Map<bigint, boolean>(batches.map((b, i) => [b, info[i][0] as boolean]));
       setOrders(
-        mine.map(({ id, o }) => ({
-          id,
-          batch: Number(o[1]),
-          tick: o[2],
-          side: o[3],
-          claimed: o[4],
-          amount: o[5],
-          settled: settledMap.get(o[1]) ?? false,
+        (list as any[]).map((o) => ({
+          id: Number(o.id),
+          batch: Number(o.batch),
+          tick: o.tick,
+          side: o.side,
+          claimed: o.claimed,
+          amount: o.amount,
+          settled: o.settled,
+          filled: o.filled,
+          baseOut: o.baseOut,
+          quoteOut: o.quoteOut,
         })),
       );
       setReadErr("");
@@ -291,6 +284,9 @@ export function App() {
     }
   })();
   const needQuote = (amountWei * BigInt(Math.round(tickPrice(tick) * 100))) / 100n;
+  const nowBlock = Math.max(head, chainHead);
+  const toSettle = [...new Set(orders.filter((o) => !o.settled && !o.claimed && nowBlock > o.batch).map((o) => o.batch))].slice(0, 20);
+  const toClaim = orders.filter((o) => o.settled && !o.claimed).slice(0, 40);
   const have = side === 0 ? bal.quote : bal.base;
   const need = side === 0 ? needQuote : amountWei;
   const lacking = have < need;
@@ -416,8 +412,26 @@ export function App() {
         <section>
           <h2>我的订单</h2>
           {readErr && <p className="warn-inline">{readErr}</p>}
+          {(toSettle.length > 0 || toClaim.length > 0) && (
+            <div className="row bulk">
+              {toSettle.length > 0 && (
+                <button
+                  onClick={() => send(`清算 ${toSettle.length} 批`, () => write(addrs.exchange, exchangeAbi, "settleMany", [toSettle.map((b) => BigInt(b))], manyGas.settle(toSettle.length)))}
+                >
+                  一键清算（{toSettle.length} 批）
+                </button>
+              )}
+              {toClaim.length > 0 && (
+                <button
+                  onClick={() => send(`领取 ${toClaim.length} 笔`, () => write(addrs.exchange, exchangeAbi, "claimMany", [toClaim.map((o) => BigInt(o.id))], manyGas.claim(toClaim.length)))}
+                >
+                  一键领取（{toClaim.length} 笔）
+                </button>
+              )}
+            </div>
+          )}
           <table>
-            <thead><tr><th>#</th><th>区块</th><th>方向</th><th>价格</th><th>数量</th><th /></tr></thead>
+            <thead><tr><th>#</th><th>区块</th><th>方向</th><th>价格</th><th>数量</th><th>成交</th><th /></tr></thead>
             <tbody>
               {orders.map((o) => {
                 const closed = Math.max(head, chainHead) > o.batch; // chainHead comes from HTTP, so it works even when WebSockets are blocked
@@ -428,6 +442,7 @@ export function App() {
                     <td className={o.side === 0 ? "buy" : "sell"}>{o.side === 0 ? "买" : "卖"}</td>
                     <td>{tickPrice(o.tick).toFixed(2)}</td>
                     <td>{fmt(o.amount)}</td>
+                    <td>{o.settled ? fmt(o.filled) : "–"}</td>
                     <td>
                       {o.claimed ? (
                         "已领取"

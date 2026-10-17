@@ -7,7 +7,7 @@
  *
  * What it shows: orders-per-block grows with load, while `settle` stays a fixed ~170k gas
  * (a constant 64-tick scan), so clearing a 1,000-order batch costs the same as clearing 2.
- * `submitOrders` batches many orders into one transaction (~47k gas per order instead of ~200k),
+ * `submitOrders` batches many orders into one transaction (~52k gas per order instead of ~230k),
  * and the transactions are sent back to back with locally managed nonces so they land together.
  * Reads DEPLOYER_PRIVATE_KEY from ../.env. Cost is about 0.5 MON per 100 orders at the 100 gwei base fee.
  */
@@ -36,7 +36,7 @@ const wallet = createWalletClient({ account, chain, transport: http(rpc) });
 
 const gasPrice = await pub.getGasPrice();
 const txCount = Math.ceil(ORDERS / PER_TX);
-const limitFor = (n: number) => BigInt(60_000 + 55_000 * n); // fixed limit with headroom: Monad charges gas_limit
+const limitFor = (n: number) => BigInt(350_000 + 55_000 * n); // fixed limit with headroom (cold first order ~330k, then ~52k each): Monad charges gas_limit
 const estimate = Array.from({ length: txCount }, (_, i) => limitFor(Math.min(PER_TX, ORDERS - i * PER_TX))).reduce((a, b) => a + b, 0n) * gasPrice * 11n / 10n;
 const balance = await pub.getBalance({ address: account.address });
 console.log(`${ORDERS} orders in ${txCount} tx (${PER_TX} each) on chain ${chain.id}; max cost ~${formatEther(estimate)} MON, balance ${formatEther(balance)} MON`);

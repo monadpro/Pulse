@@ -38,8 +38,8 @@ All contracts are verified on MonadVision (Sourcify, exact match). Live app: htt
 
 | Contract | Address |
 |---|---|
-| PulseExchange | [`0xd361909697fEf21D8b8831DC7b7A40139511FBC0`](https://testnet.monadvision.com/address/0xd361909697fEf21D8b8831DC7b7A40139511FBC0) |
-| pMON (base) | [`0xD84A85Df94e403bEc6f601F4f9c94832E87435E2`](https://testnet.monadvision.com/address/0xD84A85Df94e403bEc6f601F4f9c94832E87435E2) |
-| pUSD (quote) | [`0xC54528fe4cA6bb411DEa1AEFa2129eAc907866eA`](https://testnet.monadvision.com/address/0xC54528fe4cA6bb411DEa1AEFa2129eAc907866eA) |
-| SimpleAMM (demo) | [`0xC9BFD3aBE46a342F28BceCE840e53c4b7dc0D68d`](https://testnet.monadvision.com/address/0xC9BFD3aBE46a342F28BceCE840e53c4b7dc0D68d) |
-| AttackLab (demo) | [`0xfd65ac9EC74f588a1F3799977d1ddF3c2Ed417DC`](https://testnet.monadvision.com/address/0xfd65ac9EC74f588a1F3799977d1ddF3c2Ed417DC) |
+| PulseExchange | [`0x14C0B4328038698B75fdC31D3c19853F8249c29f`](https://testnet.monadvision.com/address/0x14C0B4328038698B75fdC31D3c19853F8249c29f) |
+| pMON (base) | [`0xA55556b821966e565102DADee57Fb9Fac297c2A5`](https://testnet.monadvision.com/address/0xA55556b821966e565102DADee57Fb9Fac297c2A5) |
+| pUSD (quote) | [`0x3e28F0cE40D6Ec7726E424b194B4E2d7F9cb4924`](https://testnet.monadvision.com/address/0x3e28F0cE40D6Ec7726E424b194B4E2d7F9cb4924) |
+| SimpleAMM (demo) | [`0xdc97a0C72Bbb08e22d0D04346A80Ff7F0dA7225D`](https://testnet.monadvision.com/address/0xdc97a0C72Bbb08e22d0D04346A80Ff7F0dA7225D) |
+| AttackLab (demo) | [`0x47B5922CA9FaA65134875110E0c4183363BC0750`](https://testnet.monadvision.com/address/0x47B5922CA9FaA65134875110E0c4183363BC0750) |

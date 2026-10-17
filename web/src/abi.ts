@@ -11,7 +11,14 @@ export const exchangeAbi = parseAbi([
   "function TICKS() view returns (uint256)",
   "function tickPrice(uint8) pure returns (uint256)",
   "function ordersLength() view returns (uint256)",
-  "function orders(uint256) view returns (address owner, uint64 batch, uint8 tick, uint8 side, bool claimed, uint128 amount)",
+  "function orders(uint256) view returns (address owner, uint64 batch, uint8 tick, uint8 side, bool claimed, uint128 amount, uint64 prevByOwner)",
+  "function ordersOf(address owner, uint256 limit) view returns ((uint256 id, uint64 batch, uint8 tick, uint8 side, bool claimed, bool settled, uint128 amount, uint128 filled, uint256 baseOut, uint256 quoteOut)[])",
+  "function recentBatches(uint256 count) view returns ((uint64 batch, bool settled, uint8 clearTick, uint32 orderCount, uint128 volume, uint128 totalBids, uint128 totalAsks)[])",
+  "function settledBatchCount() view returns (uint256)",
+  "function maxBatchOrders() view returns (uint32)",
+  "function maxBatchBlock() view returns (uint64)",
+  "function claimMany(uint256[] ids)",
+  "function settleMany(uint64[] list)",
   "function getBatch(uint64) view returns (bool settled, uint8 clearTick, uint128 volume, uint128[64] bids, uint128[64] asks)",
   "function submitOrder(uint8 side, uint8 tick, uint128 amount) returns (uint256)",
   "function submitOrders(uint8[] sides, uint8[] ticks, uint128[] amounts)",
@@ -26,10 +33,16 @@ export const exchangeAbi = parseAbi([
 export const GAS = {
   approve: 70_000n,
   faucet: 90_000n,
-  submitOrder: 240_000n,
+  submitOrder: 360_000n, // measured max ~330k on a cold batch
   settle: 200_000n,
   claim: 170_000n,
 } as const;
+
+/** claimMany / settleMany: fixed per-item gas, because Monad charges the gas limit. */
+export const manyGas = {
+  claim: (n: number) => 60_000n + 110_000n * BigInt(n),
+  settle: (n: number) => 60_000n + 200_000n * BigInt(n),
+};
 
 export const labAbi = parseAbi([
   "function lastAmm() view returns (uint256 victimFair, uint256 victimGot, int256 attackerProfit)",

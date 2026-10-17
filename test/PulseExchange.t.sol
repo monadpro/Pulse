@@ -111,22 +111,30 @@ contract PulseExchangeTest is Test {
     }
 
     function test_settleGasIsConstant() public {
+        // warm-up: the very first settle also initialises the settledBatches array
+        _submit(alice, PulseExchange.Side.Buy, 50, 1 ether);
+        _submit(bob, PulseExchange.Side.Sell, 50, 1 ether);
+        vm.roll(block.number + 1);
+        ex.settle(100);
+
+        vm.roll(block.number + 1);
+        uint64 smallBatch = uint64(block.number);
         _submit(alice, PulseExchange.Side.Buy, 50, 1 ether);
         _submit(bob, PulseExchange.Side.Sell, 50, 1 ether);
         vm.roll(block.number + 1);
         uint256 g0 = gasleft();
-        ex.settle(100);
+        ex.settle(smallBatch);
         uint256 small = g0 - gasleft();
 
         vm.roll(block.number + 1);
-        uint64 batch2 = uint64(block.number);
+        uint64 bigBatch = uint64(block.number);
         for (uint256 i; i < 100; ++i) {
             _submit(alice, PulseExchange.Side.Buy, uint8(i % 64), 1 ether);
             _submit(bob, PulseExchange.Side.Sell, uint8((i * 7) % 64), 1 ether);
         }
         vm.roll(block.number + 1);
         uint256 g1 = gasleft();
-        ex.settle(batch2);
+        ex.settle(bigBatch);
         uint256 big = g1 - gasleft();
         emit log_named_uint("settle gas (2 orders)", small);
         emit log_named_uint("settle gas (200 orders)", big);
@@ -251,5 +259,107 @@ contract PulseScaleTest is Test {
         }
         assertLe(base.balanceOf(address(ex)), 10 ether); // only rounding dust remains
         assertLe(quote.balanceOf(address(ex)), 10 ether);
+    }
+}
+
+contract PulseV2Test is Test {
+    MockToken base;
+    MockToken quote;
+    PulseExchange ex;
+    address alice = address(0xA11CE);
+    address bob = address(0xB0B);
+
+    function setUp() public {
+        base = new MockToken("Base", "BASE");
+        quote = new MockToken("Quote", "USD");
+        ex = new PulseExchange(IERC20(address(base)), IERC20(address(quote)));
+        address[2] memory us = [alice, bob];
+        for (uint256 i; i < 2; ++i) {
+            base.mint(us[i], 1_000_000 ether);
+            quote.mint(us[i], 1_000_000 ether);
+            vm.startPrank(us[i]);
+            base.approve(address(ex), type(uint256).max);
+            quote.approve(address(ex), type(uint256).max);
+            vm.stopPrank();
+        }
+        vm.roll(100);
+    }
+
+    function _order(address who, PulseExchange.Side side, uint8 tick, uint128 amt) internal returns (uint256) {
+        vm.prank(who);
+        return ex.submitOrder(side, tick, amt);
+    }
+
+    function test_ordersOfIsNewestFirstAndPerUser() public {
+        uint256 a0 = _order(alice, PulseExchange.Side.Buy, 50, 1 ether);
+        uint256 b0 = _order(bob, PulseExchange.Side.Sell, 50, 1 ether);
+        vm.roll(block.number + 1);
+        uint256 a1 = _order(alice, PulseExchange.Side.Buy, 40, 2 ether);
+
+        PulseExchange.OrderView[] memory mine = ex.ordersOf(alice, 10);
+        assertEq(mine.length, 2);
+        assertEq(mine[0].id, a1);
+        assertEq(mine[1].id, a0);
+        assertEq(ex.ordersOf(bob, 10).length, 1);
+        assertEq(ex.ordersOf(bob, 10)[0].id, b0);
+        assertEq(ex.ordersOf(address(0xDEAD), 10).length, 0);
+        assertEq(ex.ordersOf(alice, 1).length, 1); // limit respected
+    }
+
+    function test_batchCountersAndRecentBatches() public {
+        _order(alice, PulseExchange.Side.Buy, 50, 3 ether);
+        _order(bob, PulseExchange.Side.Sell, 50, 2 ether);
+        vm.roll(block.number + 1);
+        _order(alice, PulseExchange.Side.Buy, 50, 1 ether);
+
+        PulseExchange.BatchSummary[] memory r = ex.recentBatches(5);
+        assertEq(r.length, 2);
+        assertEq(r[0].batch, 101); // newest first
+        assertEq(r[1].batch, 100);
+        assertEq(r[1].orderCount, 2);
+        assertEq(r[1].totalBids, 3 ether);
+        assertEq(r[1].totalAsks, 2 ether);
+        assertEq(ex.maxBatchOrders(), 2);
+        assertEq(ex.maxBatchBlock(), 100);
+    }
+
+    function test_settleManyAndClaimMany() public {
+        uint256 a0 = _order(alice, PulseExchange.Side.Buy, 50, 5 ether);
+        uint256 b0 = _order(bob, PulseExchange.Side.Sell, 50, 5 ether);
+        vm.roll(block.number + 1);
+        uint256 a1 = _order(alice, PulseExchange.Side.Buy, 50, 4 ether);
+        uint256 b1 = _order(bob, PulseExchange.Side.Sell, 50, 4 ether);
+        vm.roll(block.number + 1); // batch 101 is now closed too
+
+        uint64[] memory list = new uint64[](3);
+        list[0] = 100;
+        list[1] = 101;
+        list[2] = uint64(block.number); // still open: skipped, not a revert
+        ex.settleMany(list);
+        assertEq(ex.settledBatchCount(), 2);
+        ex.settleMany(list); // idempotent
+
+        uint256[] memory ids = new uint256[](4);
+        ids[0] = a0;
+        ids[1] = b0;
+        ids[2] = a1;
+        ids[3] = b1;
+        uint256 baseBefore = base.balanceOf(alice);
+        ex.claimMany(ids);
+        ex.claimMany(ids); // already claimed: skipped
+        assertEq(base.balanceOf(alice) - baseBefore, 9 ether);
+        PulseExchange.OrderView[] memory mine = ex.ordersOf(alice, 5);
+        assertTrue(mine[0].claimed && mine[0].settled);
+        assertEq(mine[0].filled, 4 ether);
+    }
+
+    function test_bookSharesOneSlotPerTick() public {
+        // a bid and an ask at the same tick are packed together and read back separately
+        _order(alice, PulseExchange.Side.Buy, 7, 3 ether);
+        _order(bob, PulseExchange.Side.Sell, 7, 2 ether);
+        (,,, uint128[64] memory bids, uint128[64] memory asks) = ex.getBatch(100);
+        assertEq(bids[7], 3 ether);
+        assertEq(asks[7], 2 ether);
+        assertEq(bids[8], 0);
     }
 }

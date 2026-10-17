@@ -12,18 +12,25 @@ interface Row {
   bids: number; // total buy size
   asks: number; // total sell size
 }
+interface Stats {
+  orders: number;
+  settled: number;
+  maxBatch: number;
+  maxBlock: number;
+}
 
 const PRICE_AT = (tick: number) => 0.5 + tick * 0.01;
-const sum = (xs: readonly bigint[]) => Number(formatEther(xs.reduce((a, b) => a + b, 0n)));
+const n18 = (v: bigint) => Number(formatEther(v));
 const fmtN = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
 
 /**
  * Market view built only from on-chain data: the latest clearing prices and the recent batches.
- * History comes from the order list (eth_getLogs is limited to 100 blocks on the public RPC), so it needs
- * no indexer. Each poll is 3 multicall requests to stay under the public RPC's ~15 requests/sec.
+ * The contract indexes batches itself (recentBatches), so one multicall request per poll is enough,
+ * which keeps us under the public RPC's ~15 requests/sec no matter how many orders there are.
  */
 export function MarketPanel() {
   const [rows, setRows] = useState<Row[]>([]);
+  const [stats, setStats] = useState<Stats>();
   const [err, setErr] = useState("");
 
   useEffect(() => {
@@ -31,40 +38,33 @@ export function MarketPanel() {
     let stop = false;
     const load = async () => {
       try {
-        const [lenRaw] = await readMany([{ address: addrs.exchange, abi: exchangeAbi, functionName: "ordersLength" }]);
-        const len = Number(lenRaw);
-        const ids = Array.from({ length: Math.min(len, 100) }, (_, i) => len - 1 - i);
-        const orders = await readMany(
-          ids.map((id) => ({ address: addrs.exchange, abi: exchangeAbi, functionName: "orders", args: [BigInt(id)] })),
-        );
-        const count = new Map<bigint, number>();
-        for (const o of orders) count.set(o[1], (count.get(o[1]) ?? 0) + 1);
-        const batches = [...count.keys()].sort((a, b) => (a > b ? -1 : 1)).slice(0, 24);
-        const info = await readMany(
-          batches.map((b) => ({ address: addrs.exchange, abi: exchangeAbi, functionName: "getBatch", args: [b] })),
-        );
+        const [recent, orders, settled, maxBatch, maxBlock] = await readMany([
+          { address: addrs.exchange, abi: exchangeAbi, functionName: "recentBatches", args: [24n] },
+          { address: addrs.exchange, abi: exchangeAbi, functionName: "ordersLength" },
+          { address: addrs.exchange, abi: exchangeAbi, functionName: "settledBatchCount" },
+          { address: addrs.exchange, abi: exchangeAbi, functionName: "maxBatchOrders" },
+          { address: addrs.exchange, abi: exchangeAbi, functionName: "maxBatchBlock" },
+        ]);
         if (stop) return;
         setRows(
-          batches.map((b, i) => {
-            const [settled, clearTick, volume, bids, asks] = info[i] as [boolean, number, bigint, bigint[], bigint[]];
-            return {
-              batch: Number(b),
-              orders: count.get(b) ?? 0,
-              settled,
-              price: PRICE_AT(clearTick),
-              volume: Number(formatEther(volume)),
-              bids: sum(bids),
-              asks: sum(asks),
-            };
-          }),
+          (recent as any[]).map((r) => ({
+            batch: Number(r.batch),
+            orders: r.orderCount,
+            settled: r.settled,
+            price: PRICE_AT(r.clearTick),
+            volume: n18(r.volume),
+            bids: n18(r.totalBids),
+            asks: n18(r.totalAsks),
+          })),
         );
+        setStats({ orders: Number(orders), settled: Number(settled), maxBatch: Number(maxBatch), maxBlock: Number(maxBlock) });
         setErr("");
       } catch (e: any) {
         if (!stop) setErr(`行情读取失败，稍后自动重试：${e?.shortMessage ?? e?.message ?? e}`);
       }
     };
     load();
-    const t = setInterval(load, 6000);
+    const t = setInterval(load, 5000);
     return () => {
       stop = true;
       clearInterval(t);
@@ -82,6 +82,12 @@ export function MarketPanel() {
     <section>
       <h2>行情 <small>来自链上的清算结果，每个区块一个价格</small></h2>
       {err && <p className="warn-inline">{err}</p>}
+      {stats && (
+        <p className="muted">
+          累计订单 <b>{stats.orders.toLocaleString()}</b> · 已清算批次 <b>{stats.settled.toLocaleString()}</b> · 历史单区块最多{" "}
+          <b className="buy">{stats.maxBatch.toLocaleString()}</b> 笔订单{stats.maxBlock ? `（区块 ${stats.maxBlock}）` : ""}
+        </p>
+      )}
       {!last ? (
         <p className="muted">还没有成交记录。下单并清算之后，这里会显示最近的清算价和走势。</p>
       ) : (
