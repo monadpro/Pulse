@@ -7,6 +7,7 @@ import { AttackPanel } from "./AttackPanel";
 import { MarketPanel } from "./MarketPanel";
 import { BlockDetail } from "./BlockDetail";
 import { OrderDetail } from "./OrderDetail";
+import { ThemeToggle } from "./ThemeToggle";
 import { useBatches } from "./useBatches";
 import { derivedState, explorer, fmt, later, RANK, STATE_INFO, tickPrice, type CommitState, type MyOrder } from "./format";
 
@@ -301,6 +302,7 @@ export function App() {
           <p>一个区块，一个价格 · one block, one price · <a href="#/">← 首页</a></p>
         </div>
         <div className="wallet">
+          <ThemeToggle />
           {account ? (
             <>
               {providers.length > 1 && (
