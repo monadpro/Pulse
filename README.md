@@ -28,7 +28,7 @@ Measured, not promised:
 ```sh
 cd web
 ORDERS=600 PER_TX=150 npx tsx scripts/stress.ts   # sends the batches back to back, then clears each block
-npx tsx scripts/keeper.ts                         # optional: auto-settle every finished batch
+npx tsx scripts/keeper.ts                         # optional: auto-settle every finished batch AND claim for users (spend cap MAX_SPEND, default 0.8 MON)
 ```
 
 ## Dev
