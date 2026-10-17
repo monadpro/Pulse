@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { formatEther, parseEther, type Address, type Hex } from "viem";
 import { addrs, publicHttp } from "./chainClients";
-import { labAbi, LAB_GAS } from "./abi";
+import { exchangeAbi, labAbi, LAB_GAS } from "./abi";
 
 const VICTIM = parseEther("1000");
 const ATTACKER = parseEther("3000");
@@ -35,10 +35,26 @@ export function AttackPanel({ send, write, enabled }: {
     const ok1 = await send("Pulse 攻击：同一区块提交 4 笔订单", () =>
       write(addrs.lab, labAbi, "runPulse", [VICTIM, ATTACKER], LAB_GAS.runPulse),
     );
-    // the batch must be a past block before it can be cleared
-    if (ok1 && (await send("Pulse 清算并领取", () => write(addrs.lab, labAbi, "finishPulse", [], LAB_GAS.finishPulse)))) {
-      const r = await publicHttp.readContract({ address: addrs.lab, abi: labAbi, functionName: "pulseReport" });
-      setPulse({ price: r[0], victimBase: r[1], paid: r[2], profit: r[3] });
+    if (ok1) {
+      // A keeper may clear the batch (and claim) on its own within a second or two. Give it a moment, and only
+      // clear it ourselves if it has not happened; the report below works either way.
+      const round = await publicHttp.readContract({ address: addrs.lab, abi: labAbi, functionName: "round" });
+      const isSettled = async () =>
+        (await publicHttp.readContract({ address: addrs.exchange, abi: exchangeAbi, functionName: "getBatch", args: [round[0]] }))[0];
+      let settled = false;
+      for (let i = 0; i < 10 && !settled; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        settled = await isSettled().catch(() => false);
+      }
+      if (!settled) {
+        await send("Pulse 清算并领取", () => write(addrs.lab, labAbi, "finishPulse", [], LAB_GAS.finishPulse));
+      }
+      try {
+        const r = await publicHttp.readContract({ address: addrs.lab, abi: labAbi, functionName: "pulseReport" });
+        setPulse({ price: r[0], victimBase: r[1], paid: r[2], profit: r[3] });
+      } catch {
+        /* the report needs a cleared batch; try again with the button */
+      }
     }
     setBusy(false);
   }
@@ -69,7 +85,7 @@ export function AttackPanel({ send, write, enabled }: {
             <ul>
               <li>统一成交价 <b>{n(pulse.price)}</b> pUSD</li>
               <li>受害者买到 <b>{n(pulse.victimBase)}</b> pMON，花了 <b>{n(pulse.paid)}</b> pUSD</li>
-              <li>攻击者净利润 <b className="buy">{pulse.profit > 0n ? "+" : pulse.profit < 0n ? "-" : ""}{n(pulse.profit, 6)}</b> pUSD（没有收益）</li>
+              <li>攻击者净利润 <b className="buy">{pulse.profit > 10n ** 12n ? "+" : ""}{pulse.profit < -(10n ** 12n) ? "-" : ""}{n(pulse.profit, 6)}</b> pUSD（没有收益）</li>
             </ul>
           ) : (
             <p className="muted">同样的攻击，同一个区块里 4 笔订单按同一价格成交</p>
