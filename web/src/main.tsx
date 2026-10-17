@@ -1,6 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App";
+import { Root } from "./Root";
 import "./style.css";
 
 // A render error must never leave a blank black page: show the message and a reload button instead.
@@ -29,6 +29,6 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error?: Error }
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
-    <App />
+    <Root />
   </ErrorBoundary>,
 );
