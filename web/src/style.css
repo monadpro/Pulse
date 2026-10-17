@@ -155,3 +155,7 @@ html[data-theme="light"] .svg-clear { fill: #a87400; }
 html[data-theme="light"] .step { color: #566078; } html[data-theme="light"] .step.done { color: #1f9d6f; }
 html[data-theme="light"] .progress .muted, html[data-theme="light"] .progress li.muted { color: #566078; }
 html[data-theme="light"] a { color: #3f5bd8; }
+
+.note { font-size: 12px; line-height: 1.7; margin: 10px 0 6px; }
+.demo-btn { width: 100%; margin-top: 8px; background: transparent; border: 1px dashed #4a5280; color: #b3a8ff; }
+html[data-theme="light"] .demo-btn { background: transparent; border-color: #a9b2d6; color: #5b4bd8; }

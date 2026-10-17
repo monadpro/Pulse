@@ -8,7 +8,7 @@ import type { BatchRow } from "./useBatches";
 
 /** Expanded view of one of my orders: lifecycle steps plus limit price -> clearing price -> fill -> payout. */
 export function OrderDetail({ o, row, head }: { o: MyOrder; row?: BatchRow; head: number }) {
-  const [clear, setClear] = useState<{ tick: number; volume: bigint }>();
+  const [clear, setClear] = useState<{ tick: number; volume: bigint; bids: bigint; asks: bigint }>();
   const [hash, setHash] = useState<Hex>();
   const [hashErr, setHashErr] = useState("");
 
@@ -26,7 +26,7 @@ export function OrderDetail({ o, row, head }: { o: MyOrder; row?: BatchRow; head
     if (o.settled && !row) {
       publicHttp
         .readContract({ address: addrs.exchange, abi: exchangeAbi, functionName: "getBatch", args: [BigInt(o.batch)] })
-        .then((r: any) => !stop && setClear({ tick: r[1], volume: r[2] }))
+        .then((r: any) => !stop && setClear({ tick: r[1], volume: r[2], bids: (r[3] as bigint[]).reduce((a, b) => a + b, 0n), asks: (r[4] as bigint[]).reduce((a, b) => a + b, 0n) }))
         .catch(() => {});
     }
     return () => {
@@ -37,6 +37,10 @@ export function OrderDetail({ o, row, head }: { o: MyOrder; row?: BatchRow; head
   const hasPrice = o.settled && (row ? row.volume > 0 : clear ? clear.volume > 0n : false);
   const clearTick = row ? row.clearTick : clear?.tick ?? 0;
   const closed = head > o.batch;
+  // why nothing traded: say what the batch actually looked like, not just "prices did not match"
+  const hasBids = row ? row.bids > 0 : clear ? clear.bids > 0n : true;
+  const hasAsks = row ? row.asks > 0 : clear ? clear.asks > 0n : true;
+  const noFillReason = !hasAsks ? "本批次只有买单，没有卖家" : !hasBids ? "本批次只有卖单，没有买家" : "本批次买卖价格未匹配";
   const buy = o.side === 0;
 
   return (
@@ -50,7 +54,7 @@ export function OrderDetail({ o, row, head }: { o: MyOrder; row?: BatchRow; head
         <li>你的{buy ? "最高买价" : "最低卖价"}：<b>{tickPrice(o.tick).toFixed(2)}</b> pUSD，数量 <b>{fmt(o.amount)}</b> pMON</li>
         <li>
           统一清算价：
-          <b>{!o.settled ? (closed ? "待清算" : "区块进行中") : hasPrice ? `${tickPrice(clearTick).toFixed(2)} pUSD` : "无成交（本批次买卖价格未匹配）"}</b>
+          <b>{!o.settled ? (closed ? "待清算" : "区块进行中") : hasPrice ? `${tickPrice(clearTick).toFixed(2)} pUSD` : `无成交（${noFillReason}）`}</b>
         </li>
         {o.settled && (
           <>
