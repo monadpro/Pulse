@@ -75,6 +75,7 @@ export function Landing() {
             <a onClick={() => scrollTo("how")}>原理</a>
             <a onClick={() => scrollTo("proof")}>对比</a>
             <a onClick={() => scrollTo("monad")}>Monad</a>
+            <a onClick={() => scrollTo("scope")}>边界</a>
             <a onClick={() => scrollTo("verify")}>可验证</a>
           </div>
           <button className="ln-btn ln-primary small" onClick={() => go("#/app")}>进入应用 →</button>
@@ -86,6 +87,7 @@ export function Landing() {
           <div>
             <span className="ln-badge">Monad 测试网 · 合约已验证</span>
             <h1>一个区块，<br /><span>一个价格</span></h1>
+            <p className="ln-tagline">Monad 上的逐块统一价现货交易引擎 · 测试网原型</p>
             <p className="lead">
               Pulse 是链上的逐块批量拍卖。同一个区块里的所有订单汇总后，按<b>同一个价格</b>成交：谁先谁后不再值钱，利用交易顺序赚差价的空间被大大压缩。
             </p>
@@ -112,6 +114,10 @@ export function Landing() {
             <div className="ln-card"><div className="ln-num">1</div><h3>下单，押金入合约</h3><p>选择方向、价格档位和数量。买单冻结对应的 pUSD，卖单冻结 pMON，订单进入当前区块的批次。</p></div>
             <div className="ln-card"><div className="ln-num">2</div><h3>区块结束，统一清算</h3><p>合约把这一批订单汇总成买卖曲线，找出成交量最大的价格，所有成交都按这个价格。清算是固定的 64 档扫描，成本不随订单数增长。</p></div>
             <div className="ln-card"><div className="ln-num">3</div><h3>领取成交与退款</h3><p>买到的币和多冻结的押金回到钱包，没成交的部分全额退回。领取可以由自动清算脚本代劳。</p></div>
+          </div>
+          <div className="ln-example">
+            <b>举个例子：</b>你愿意最高以 <b>1.05 pUSD</b> 买入 <b>100 pMON</b>，先托管 105 pUSD。本批清算价是 <b>1.00</b> 且全部成交：实际支付 100，<b>退回 5</b>，得到 100 pMON。
+            <span>你填的是价格上限，实际执行的是统一清算价。</span>
           </div>
         </section>
 
@@ -145,6 +151,30 @@ export function Landing() {
             <div className="ln-card"><div className="ln-num">∞</div><h3>固定成本的清算</h3><p>清算约 15.5 万到 17.5 万 gas，不随订单数增长。链上已有单区块 {n(stats?.maxBatch)} 笔订单被一次清算。</p></div>
             <div className="ln-card"><div className="ln-num">✓</div><h3>真实的区块状态</h3><p>页面订阅 Monad 的区块状态推送，展示 Proposed、Voted、Finalized、Verified，并把推算出来的状态单独标出。</p></div>
             <div className="ln-card"><div className="ln-num">▦</div><h3>贴合存储设计</h3><p>同一档位的买卖共用一个存储位，64 档订单簿对齐到一页，清算只读一页。</p></div>
+          </div>
+        </section>
+
+        <section className="ln-sec" id="scope">
+          <h2>适合做什么，边界在哪</h2>
+          <p className="sub">先把话说清楚：这是测试网原型，下面左边是我们认为适合的方向，右边是目前的真实状态。</p>
+          <div className="ln-vs">
+            <div className="ln-card">
+              <h3>适用方向（产品设想，尚未接入业务）</h3>
+              <ul className="ln-list">
+                <li><b>现货代币市场</b>：买卖双方按区块集中竞价，规则透明。需要稳定的做市方。</li>
+                <li><b>应用内的交易入口</b>：例如游戏资源代币的兑换。需要应用接入和足够的双边流动性。</li>
+                <li><b>教学、研究与开发者演示</b>：对比 AMM 与批量拍卖，看懂三明治攻击。<b>这是现在就能用的</b>。</li>
+              </ul>
+            </div>
+            <div className="ln-card">
+              <h3>当前边界（如实说明）</h3>
+              <ul className="ln-list">
+                <li>测试网原型，<b>合约未经审计</b>；单一交易对，价格是 64 个固定档位。</li>
+                <li>订单<b>只参与当前区块</b>，没有撤单；这一批没有对手单就不成交，押金全额退回。</li>
+                <li>清算和领取需要有人触发并支付 gas，目前由自动脚本代劳；还没有协议收费和激励设计。</li>
+                <li>同一区块内的排序保护，<b>不等于消除所有 MEV</b>。</li>
+              </ul>
+            </div>
           </div>
         </section>
 
