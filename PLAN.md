@@ -73,10 +73,11 @@
 | 5 | 前端：钱包连接、faucet、下单面板 | 已写，类型检查和构建通过；**钱包交互未在浏览器实测**（需要 MetaMask） |
 | 6 | 前端：脉冲时间轴和区块状态变色 | 完成（本地 anvil 实测黄、蓝、绿变色；`monadNewHeads` 需在测试网验证） |
 | 7 | 前端：订单列表、Settle / Claim | 已写，未在浏览器实测 |
-| 8 | 部署到测试网并验证合约 | 待做，需要你导入钱包 |
-| 9 | 实测 `eth_sendRawTransactionSync` 和延迟显示 | 待做 |
-| 10 | 压测机器人（多钱包、每个钱包保持 10 MON 以上） | P2 |
-| 11 | 攻击对比面板（模拟恶意出块者，AMM 对 Pulse） | P1 |
+| 8 | 部署到测试网 | 完成；**MonadVision 合约验证尚未做** |
+| 9 | 实测 `eth_sendRawTransactionSync` | 完成，公共 RPC 支持 |
+| 13 | GitHub Pages 自动部署（https://monadpro.github.io/Pulse/） | 完成 |
+| 10 | 压测机器人 `web/scripts/bot.ts`（单钱包并发发单、本地管理 nonce） | 完成（测试网实测 24 笔订单，单个区块最多 8 笔） |
+| 11 | 攻击对比面板（模拟恶意出块者，AMM 对 Pulse） | 完成（合约在测试网实测：AMM 受害者少买 23.9%，攻击者赚 230.9；Pulse 攻击者利润 -1 wei） |
 | 12 | README 完善、录制 3 分钟备份视频、提交到 Mojo | 待做 |
 
 优先级：任务 5–9 是演示的最小闭环（P0）；11 是演示高光（P1）；10 视时间而定（P2）。

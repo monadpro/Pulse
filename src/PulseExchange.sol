@@ -3,6 +3,8 @@ pragma solidity ^0.8.28;
 
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function balanceOf(address owner) external view returns (uint256);
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
@@ -157,10 +159,25 @@ contract PulseExchange {
         require(b.settled, "unsettled");
         o.claimed = true;
 
-        uint128 filled;
-        uint256 baseOut;
-        uint256 quoteOut;
+        (uint128 filled, uint256 baseOut, uint256 quoteOut) = _payout(o, b);
+        if (baseOut > 0) require(base.transfer(o.owner, baseOut), "base out");
+        if (quoteOut > 0) require(quote.transfer(o.owner, quoteOut), "quote out");
+        emit Claimed(orderId, o.owner, filled, baseOut, quoteOut);
+    }
 
+    /// @notice What `claim` would pay for a settled order (view helper for UIs and demos).
+    function previewClaim(uint256 orderId) external view returns (uint128 filled, uint256 baseOut, uint256 quoteOut) {
+        Order storage o = orders[orderId];
+        Batch storage b = batches[o.batch];
+        require(b.settled, "unsettled");
+        return _payout(o, b);
+    }
+
+    function _payout(Order storage o, Batch storage b)
+        private
+        view
+        returns (uint128 filled, uint256 baseOut, uint256 quoteOut)
+    {
         // Rounding is chosen so the contract never owes more than it holds:
         // buyers fill/pay and sellers sell/receive round in the contract's favour.
         if (o.side == Side.Buy) {
@@ -180,10 +197,6 @@ contract PulseExchange {
             filled = uint128(sold);
             baseOut = o.amount - sold;
         }
-
-        if (baseOut > 0) require(base.transfer(o.owner, baseOut), "base out");
-        if (quoteOut > 0) require(quote.transfer(o.owner, quoteOut), "quote out");
-        emit Claimed(orderId, o.owner, filled, baseOut, quoteOut);
     }
 
     function _quoteFor(uint256 baseAmount, uint256 price) private pure returns (uint256) {

@@ -3,6 +3,7 @@ import { createWalletClient, custom, formatEther, parseEther, type Address, type
 import { chain } from "./chain";
 import { addrs, deployed, publicHttp, publicWs } from "./chainClients";
 import { erc20Abi, exchangeAbi, GAS } from "./abi";
+import { AttackPanel } from "./AttackPanel";
 
 type CommitState = "Proposed" | "Voted" | "Finalized";
 interface Cell {
@@ -177,7 +178,7 @@ export function App() {
   }
 
   // Gas limits are fixed: Monad charges gas_limit, and a failed estimate can make wallets over-reserve.
-  async function send(label: string, run: () => Promise<Hex>) {
+  async function send(label: string, run: () => Promise<Hex>): Promise<boolean> {
     setStatus(`${label}：等待签名…`);
     try {
       const t0 = performance.now();
@@ -188,8 +189,10 @@ export function App() {
       setLatency(Math.round(performance.now() - sent));
       setStatus(`${label}：已确认（含签名 ${Math.round(performance.now() - t0)} ms）`);
       refresh();
+      return true;
     } catch (e: any) {
       setStatus(`${label}失败：${e?.shortMessage ?? e?.message ?? e}`);
+      return false;
     }
   }
 
@@ -317,6 +320,8 @@ export function App() {
           </table>
         </section>
       </div>
+
+      <AttackPanel send={send} write={write} enabled={!!account && deployed} />
     </div>
   );
 }

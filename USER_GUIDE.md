@@ -135,7 +135,19 @@ npm run dev
 
 ---
 
-## 六、常见问题
+## 六、看"攻击对比"（最直观的演示）
+
+页面最下方有一个 **攻击对比** 区域，左边是普通交易所（AMM），右边是 Pulse。
+模拟的是一个"作恶的出块者"，它可以随意安排区块里交易的先后顺序，用经典的三明治手法对付一个受害者：先自己买入，让受害者买在更高的价格，再自己卖出。
+
+1. 点左边的 **运行攻击**：受害者买到的币**少了约 24%**，攻击者净赚约 231 pUSD。
+2. 点右边的 **运行攻击**（需要确认两次交易，第二次是清算）：所有订单按**同一个价格**成交，受害者买得和没有攻击时一样，攻击者**没有任何利润**。
+
+这就是 Pulse 的意义：在同一个区块里，先后顺序不再值钱。
+
+---
+
+## 七、常见问题
 
 **Q：点"连接钱包"没反应？**
 没装 MetaMask，或者浏览器没启用它。装好后刷新页面。
@@ -165,9 +177,11 @@ npm run dev
 
 ---
 
-## 七、给开发者的补充
+## 八、给开发者的补充
 
 - 合约地址（Monad 测试网，chainId 10143）：见 `web/src/deployments.json`。
+- 线上页面：https://monadpro.github.io/Pulse/ （每次推送 `web/` 目录的改动，GitHub Actions 会自动重新发布）。
 - 本地测试：`forge test -vv`。
+- 压测机器人：`cd web && ROUNDS=3 PER_ROUND=8 npx tsx scripts/bot.ts`（每笔订单约花 0.024 MON，按余额调整规模）。
 - 部署：`forge script script/Deploy.s.sol --rpc-url https://testnet-rpc.monad.xyz --private-key $DEPLOYER_PRIVATE_KEY --broadcast`。
 - 部署钱包的私钥保存在 `.env`，该文件已被 git 忽略，**不要提交**。

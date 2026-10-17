@@ -156,3 +156,51 @@ contract PulseExchangeTest is Test {
         ex.claim(o3); // would revert if the contract were insolvent
     }
 }
+
+import {SimpleAMM} from "../src/SimpleAMM.sol";
+import {AttackLab} from "../src/AttackLab.sol";
+
+contract AttackLabTest is Test {
+    MockToken base;
+    MockToken quote;
+    PulseExchange ex;
+    SimpleAMM amm;
+    AttackLab lab;
+
+    function setUp() public {
+        base = new MockToken("Base", "BASE");
+        quote = new MockToken("Quote", "USD");
+        ex = new PulseExchange(IERC20(address(base)), IERC20(address(quote)));
+        amm = new SimpleAMM(IERC20(address(base)), IERC20(address(quote)));
+        lab = new AttackLab(IERC20(address(base)), IERC20(address(quote)), amm, ex);
+        base.mint(address(this), 20_000 ether);
+        quote.mint(address(this), 20_000 ether);
+        base.approve(address(amm), type(uint256).max);
+        quote.approve(address(amm), type(uint256).max);
+        amm.addLiquidity(20_000 ether, 20_000 ether);
+        base.mint(address(lab), 50_000 ether);
+        quote.mint(address(lab), 50_000 ether);
+        vm.roll(100);
+    }
+
+    function test_ammSandwichProfitsAndHurtsVictim() public {
+        AttackLab.AmmReport memory r = lab.runAmm(1000 ether, 3000 ether);
+        assertGt(r.attackerProfit, 0);
+        assertLt(r.victimGot, r.victimFair);
+        emit log_named_int("AMM attacker profit", r.attackerProfit);
+        emit log_named_uint("AMM victim fair", r.victimFair);
+        emit log_named_uint("AMM victim got", r.victimGot);
+    }
+
+    function test_pulseSandwichGainsNothing() public {
+        lab.runPulse(1000 ether, 3000 ether);
+        vm.roll(block.number + 1);
+        lab.finishPulse();
+        AttackLab.PulseReport memory rep = lab.pulseReport();
+        assertLe(rep.attackerProfit, 0);
+        assertEq(rep.clearPrice, 1 ether);
+        assertEq(rep.victimBase, 1000 ether);
+        emit log_named_int("Pulse attacker profit", rep.attackerProfit);
+        emit log_named_uint("Pulse victim paid", rep.victimQuotePaid);
+    }
+}

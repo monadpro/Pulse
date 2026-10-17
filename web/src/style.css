@@ -34,3 +34,9 @@ input:not([type=range]) { width: 100%; box-sizing: border-box; margin-top: 6px; 
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #1d2336; }
 .buy { color: #46d39a; } .sell { color: #ff6b66; }
+.vs { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.card { border-radius: 12px; padding: 14px; background: #0f1320; border: 1px solid #222842; }
+.card.bad { border-color: #7a2e2b; } .card.good { border-color: #1f7a57; }
+.card h3 { margin: 0 0 10px; }
+.card ul { padding-left: 18px; margin: 12px 0 0; line-height: 1.8; }
+.muted { color: #8b93a7; font-size: 13px; }
