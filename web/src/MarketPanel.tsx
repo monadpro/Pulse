@@ -1,76 +1,8 @@
-import { useEffect, useState } from "react";
-import { formatEther } from "viem";
-import { addrs, deployed, readMany } from "./chainClients";
-import { exchangeAbi } from "./abi";
+import { fmtN } from "./format";
+import type { BatchRow, Stats } from "./useBatches";
 
-interface Row {
-  batch: number;
-  orders: number;
-  settled: boolean;
-  price: number; // clearing price (settled batches)
-  volume: number; // matched pMON
-  bids: number; // total buy size
-  asks: number; // total sell size
-}
-interface Stats {
-  orders: number;
-  settled: number;
-  maxBatch: number;
-  maxBlock: number;
-}
-
-const PRICE_AT = (tick: number) => 0.5 + tick * 0.01;
-const n18 = (v: bigint) => Number(formatEther(v));
-const fmtN = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
-
-/**
- * Market view built only from on-chain data: the latest clearing prices and the recent batches.
- * The contract indexes batches itself (recentBatches), so one multicall request per poll is enough,
- * which keeps us under the public RPC's ~15 requests/sec no matter how many orders there are.
- */
-export function MarketPanel() {
-  const [rows, setRows] = useState<Row[]>([]);
-  const [stats, setStats] = useState<Stats>();
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    if (!deployed) return;
-    let stop = false;
-    const load = async () => {
-      try {
-        const [recent, orders, settled, maxBatch, maxBlock] = await readMany([
-          { address: addrs.exchange, abi: exchangeAbi, functionName: "recentBatches", args: [24n] },
-          { address: addrs.exchange, abi: exchangeAbi, functionName: "ordersLength" },
-          { address: addrs.exchange, abi: exchangeAbi, functionName: "settledBatchCount" },
-          { address: addrs.exchange, abi: exchangeAbi, functionName: "maxBatchOrders" },
-          { address: addrs.exchange, abi: exchangeAbi, functionName: "maxBatchBlock" },
-        ]);
-        if (stop) return;
-        setRows(
-          (recent as any[]).map((r) => ({
-            batch: Number(r.batch),
-            orders: r.orderCount,
-            settled: r.settled,
-            price: PRICE_AT(r.clearTick),
-            volume: n18(r.volume),
-            bids: n18(r.totalBids),
-            asks: n18(r.totalAsks),
-          })),
-        );
-        setStats({ orders: Number(orders), settled: Number(settled), maxBatch: Number(maxBatch), maxBlock: Number(maxBlock) });
-        setErr("");
-      } catch (e: any) {
-        if (!stop) setErr(`行情读取失败，稍后自动重试：${e?.shortMessage ?? e?.message ?? e}`);
-      }
-    };
-    load();
-    const t = setInterval(load, 5000);
-    return () => {
-      stop = true;
-      clearInterval(t);
-    };
-  }, []);
-
+/** Market view from on-chain data (shared batch poll). Clicking a row opens that block's detail. */
+export function MarketPanel({ rows, stats, error, loaded, onSelect }: { rows: BatchRow[]; stats?: Stats; error: string; loaded: boolean; onSelect: (block: number) => void }) {
   // only batches that actually traded have a meaningful price
   const traded = rows.filter((r) => r.settled && r.volume > 0);
   const last = traded[0];
@@ -80,15 +12,17 @@ export function MarketPanel() {
 
   return (
     <section>
-      <h2>行情 <small>来自链上的清算结果，每个区块一个价格</small></h2>
-      {err && <p className="warn-inline">{err}</p>}
+      <h2>行情 <small>来自链上的清算结果，每个区块一个价格 · 点击一行查看区块详情</small></h2>
+      {error && <p className="warn-inline">{error}</p>}
       {stats && (
         <p className="muted">
           累计订单 <b>{stats.orders.toLocaleString()}</b> · 已清算批次 <b>{stats.settled.toLocaleString()}</b> · 历史单区块最多{" "}
-          <b className="buy">{stats.maxBatch.toLocaleString()}</b> 笔订单{stats.maxBlock ? `（区块 ${stats.maxBlock}）` : ""}
+          <b className="buy">{stats.maxBatch.toLocaleString()}</b> 笔订单{stats.maxBlock ? <>（区块 <a onClick={() => onSelect(stats.maxBlock)} title="点击查看这个区块">{stats.maxBlock}</a>）</> : ""}
         </p>
       )}
-      {!last ? (
+      {!loaded ? (
+        <p className="muted">{error ? "暂时无法加载。" : "正在读取链上数据…"}</p>
+      ) : !last ? (
         <p className="muted">还没有成交记录。下单并清算之后，这里会显示最近的清算价和走势。</p>
       ) : (
         <div className="market">
@@ -108,17 +42,17 @@ export function MarketPanel() {
         </div>
       )}
       {rows.length > 0 && (
-        <table>
+        <table className="clickable">
           <thead>
             <tr><th>区块</th><th>订单</th><th>状态</th><th>清算价</th><th>成交量</th><th>买盘</th><th>卖盘</th></tr>
           </thead>
           <tbody>
-            {rows.slice(0, 8).map((r) => (
-              <tr key={r.batch}>
+            {rows.slice(0, 12).map((r) => (
+              <tr key={r.batch} onClick={() => onSelect(r.batch)} title="点击查看区块详情">
                 <td>{r.batch}</td>
                 <td>{r.orders}</td>
                 <td>{r.settled ? "已清算" : "待清算"}</td>
-                <td>{r.settled && r.volume > 0 ? r.price.toFixed(2) : "–"}</td>
+                <td>{r.settled ? (r.volume > 0 ? r.price.toFixed(2) : <span title="本批次买卖价格未匹配，没有成交">无成交</span>) : "–"}</td>
                 <td>{r.settled ? fmtN(r.volume) : "–"}</td>
                 <td className="buy">{fmtN(r.bids)}</td>
                 <td className="sell">{fmtN(r.asks)}</td>
