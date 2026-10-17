@@ -14,6 +14,8 @@ export const monadTestnet = defineChain({
   blockExplorers: {
     default: { name: "MonadVision", url: "https://testnet.monadvision.com" },
   },
+  // Used to fold many eth_calls into one request: the public RPC allows only ~15 requests/sec.
+  contracts: { multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" } },
 });
 
 // `VITE_LOCAL=1 npm run dev` points the app at a local anvil for development.
@@ -26,4 +28,4 @@ export const anvilLocal = defineChain({
   },
 });
 
-export const chain = import.meta.env.VITE_LOCAL ? anvilLocal : monadTestnet;
+export const chain = (import.meta as any).env?.VITE_LOCAL ? anvilLocal : monadTestnet;
