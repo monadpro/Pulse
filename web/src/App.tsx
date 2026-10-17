@@ -6,6 +6,7 @@ import { erc20Abi, exchangeAbi, GAS, manyGas } from "./abi";
 import { AttackPanel } from "./AttackPanel";
 import { MarketPanel } from "./MarketPanel";
 import { BlockDetail } from "./BlockDetail";
+import { Hero } from "./Hero";
 import { OrderDetail } from "./OrderDetail";
 import { useBatches } from "./useBatches";
 import { derivedState, explorer, fmt, later, RANK, STATE_INFO, tickPrice, type CommitState, type MyOrder } from "./format";
@@ -325,6 +326,8 @@ export function App() {
           )}
         </div>
       </header>
+
+      <Hero />
 
       {!deployed && <div className="warn">合约尚未部署：运行 forge script script/Deploy.s.sol，地址会写入 web/src/deployments.json</div>}
 
