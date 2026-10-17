@@ -293,6 +293,10 @@ export function App() {
   const need = side === 0 ? needQuote : amountWei;
   const lacking = have < need;
   const needApprove = side === 0 ? bal.allowQuote < needQuote : bal.allowBase < amountWei;
+  // Demo: buy and sell in ONE transaction, so both land in the same block and can match each other.
+  // The sell is priced a few ticks below the buy, so the batch clears and both orders fill (you trade with yourself).
+  const demoSellTick = Math.max(0, tick - 4);
+  const demoReady = bal.quote >= needQuote && bal.base >= amountWei && bal.allowQuote >= needQuote && bal.allowBase >= amountWei;
 
   return (
     <div className="app">
@@ -420,6 +424,25 @@ export function App() {
             >
               提交订单
             </button>
+          )}
+          <p className="muted note">
+            为什么买单没成交？同一个区块里<b>需要有人卖</b>，且卖价不高于你的最高买价，才会成交。一个人单独下买单，通常没有对手，押金会全额退回。
+          </p>
+          <button
+            type="button"
+            className="demo-btn"
+            disabled={!account || !deployed || amountWei === 0n || !demoReady}
+            title="用同一笔交易同时提交一个买单和一个卖单，让它们落在同一个区块里互相成交"
+            onClick={() =>
+              send("同区块买卖演示", () =>
+                write(addrs.exchange, exchangeAbi, "submitOrders", [[0, 1], [tick, demoSellTick], [amountWei, amountWei]], 460_000n),
+              )
+            }
+          >
+            演示成交：同一区块买 + 卖（自己对自己）
+          </button>
+          {account && deployed && amountWei > 0n && !demoReady && (
+            <p className="muted note">演示需要同时有足够的 pUSD 和 pMON，并且<b>两种币都已授权</b>（分别切换到买入、卖出各授权一次）。</p>
           )}
           <p className="status">{status}</p>
           {lastTx && (
